@@ -2,15 +2,17 @@
 # in Linux, c_api test cant do like this or graph_to_program register more than once.
 # Both Windows and Linux can only use paddle_inference_c, but this will increase size
 # of build folder by 30G.
+set(inference_api_tester_deps paddle_inference_api analysis_config)
+
 cc_test(
   test_paddle_inference_api
   SRCS api_tester.cc
-  DEPS paddle_inference_api)
+  DEPS ${inference_api_tester_deps})
 
 cc_test(
   inference_api_helper_test
   SRCS helper_test.cc
-  DEPS paddle_inference_api)
+  DEPS ${inference_api_tester_deps})
 
 if(WITH_ONNXRUNTIME AND WIN32)
   # Copy onnxruntime for some c++ test in Windows, since the test will
@@ -19,13 +21,6 @@ if(WITH_ONNXRUNTIME AND WIN32)
 endif()
 
 if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
-  if(WIN32)
-    set(INFERENCE_C_EXTRA_DEPS paddle_inference_shared
-                               paddle_inference_c_shared)
-  else()
-    set(INFERENCE_C_EXTRA_DEPS paddle_inference_shared paddle_inference_c)
-  endif()
-
   function(download_data install_dir data_file check_sum)
     string(REGEX MATCH "[^/\\]+$" file_name ${data_file})
     if(NOT EXISTS ${install_dir}/${file_name})
@@ -426,15 +421,6 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
     "lac_data.txt.tar.gz" 9983539cd6b34fbdc411e43422776bfd)
   inference_analysis_api_test(test_analyzer_lac ${LAC_INSTALL_DIR}
                               analyzer_lac_tester.cc)
-
-  # Pyramid DNN
-  set(PYRAMID_DNN_INSTALL_DIR "${INFERENCE_DEMO_INSTALL_DIR}/pyramid_dnn")
-  download_model_and_data_without_verify(
-    ${PYRAMID_DNN_INSTALL_DIR} "PyramidDNN_model.tar.gz"
-    "PyramidDNN_data.txt.tar.gz")
-  inference_analysis_api_test(
-    test_analyzer_pyramid_dnn ${PYRAMID_DNN_INSTALL_DIR}
-    analyzer_pyramid_dnn_tester.cc)
 
   # Ernie
   set(ERNIE_INSTALL_DIR "${INFERENCE_DEMO_INSTALL_DIR}/Ernie")
@@ -976,6 +962,22 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       ARGS
       --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
     inference_analysis_test(
+      trt_mark_trt_engine_outputs_test
+      SRCS
+      trt_mark_trt_engine_outputs_test.cc
+      EXTRA_DEPS
+      paddle_inference_shared
+      ARGS
+      --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
+    inference_analysis_test(
+      trt_disable_tensorrt_half_ops_test
+      SRCS
+      trt_disable_tensorrt_half_ops_test.cc
+      EXTRA_DEPS
+      paddle_inference_shared
+      ARGS
+      --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
+    inference_analysis_test(
       trt_fc_prelu_test
       SRCS
       trt_fc_prelu_test.cc
@@ -1004,28 +1006,27 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       SRCS
       analyzer_capi_exp_gpu_tester.cc
       EXTRA_DEPS
-      ${INFERENCE_C_EXTRA_DEPS}
+      paddle_inference_c_shared
       ARGS
       --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
-    if(WIN32)
-      target_link_libraries(test_analyzer_capi_exp_gpu
-                            paddle_inference_c_shared)
-    else()
-      target_link_libraries(test_analyzer_capi_exp_gpu paddle_inference_c)
-    endif()
     inference_analysis_test(
       test_analyzer_capi_exp_xpu
       SRCS
       analyzer_capi_exp_xpu_tester.cc
       EXTRA_DEPS
-      ${INFERENCE_C_EXTRA_DEPS}
+      paddle_inference_c_shared
       ARGS
       --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
-    if(WIN32)
-      target_link_libraries(test_analyzer_capi_exp_xpu
-                            paddle_inference_c_shared)
-    else()
-      target_link_libraries(test_analyzer_capi_exp_xpu paddle_inference_c)
+    #TODO(inference): windows encounter a SEH error, we need to fix it.
+    if(NOT WIN32)
+      inference_analysis_test(
+        trt_rebind_stream_test
+        SRCS
+        trt_rebind_stream_test.cc
+        EXTRA_DEPS
+        paddle_inference_shared
+        ARGS
+        --infer_model=${TRT_MODEL_INSTALL_DIR}/trt_inference_test_models)
     endif()
 
     set(TRT_MODEL_QUANT_RESNET_DIR
@@ -1174,44 +1175,27 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
     SRCS
     analyzer_capi_exp_tester.cc
     EXTRA_DEPS
-    ${INFERENCE_C_EXTRA_DEPS}
+    paddle_inference_c_shared
     ARGS
     --infer_model=${RESNET50_MODEL_DIR}/model)
-  if(WIN32)
-    target_link_libraries(test_analyzer_capi_exp paddle_inference_c_shared)
-  else()
-    target_link_libraries(test_analyzer_capi_exp paddle_inference_c)
-  endif()
 
   inference_analysis_test(
     test_analyzer_capi_exp_pd_config
     SRCS
     analyzer_capi_exp_pd_config_tester.cc
     EXTRA_DEPS
-    ${INFERENCE_C_EXTRA_DEPS}
+    paddle_inference_c_shared
     ARGS
     --infer_model=${MOBILENET_INSTALL_DIR}/model)
-  if(WIN32)
-    target_link_libraries(test_analyzer_capi_exp_pd_config
-                          paddle_inference_c_shared)
-  else()
-    target_link_libraries(test_analyzer_capi_exp_pd_config paddle_inference_c)
-  endif()
 
   inference_analysis_test(
     test_analyzer_capi_exp_pd_tensor
     SRCS
     analyzer_capi_exp_pd_tensor_tester.cc
     EXTRA_DEPS
-    ${INFERENCE_C_EXTRA_DEPS}
+    paddle_inference_c_shared
     ARGS
     --infer_model=${MOBILENET_INSTALL_DIR}/model)
-  if(WIN32)
-    target_link_libraries(test_analyzer_capi_exp_pd_tensor
-                          paddle_inference_c_shared)
-  else()
-    target_link_libraries(test_analyzer_capi_exp_pd_tensor paddle_inference_c)
-  endif()
 
   if(NOT APPLE AND NOT WIN32)
     inference_analysis_test(
@@ -1219,16 +1203,9 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       SRCS
       analyzer_capi_exp_pd_threads_tester.cc
       EXTRA_DEPS
-      ${INFERENCE_C_EXTRA_DEPS}
+      paddle_inference_c_shared
       ARGS
       --infer_model=${MOBILENET_INSTALL_DIR}/model)
-    if(WIN32)
-      target_link_libraries(test_analyzer_capi_exp_pd_threads
-                            paddle_inference_c_shared)
-    else()
-      target_link_libraries(test_analyzer_capi_exp_pd_threads
-                            paddle_inference_c)
-    endif()
   endif()
 
   inference_analysis_test(
@@ -1282,15 +1259,9 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       SRCS
       analyzer_capi_exp_int_tester.cc
       EXTRA_DEPS
-      ${INFERENCE_C_EXTRA_DEPS}
+      paddle_inference_c_shared
       ARGS
       --infer_model=${INT8_DATA_DIR}/resnet50/model)
-    if(WIN32)
-      target_link_libraries(test_analyzer_capi_exp_int
-                            paddle_inference_c_shared)
-    else()
-      target_link_libraries(test_analyzer_capi_exp_int paddle_inference_c)
-    endif()
   endif()
 
   inference_analysis_test(
@@ -1298,14 +1269,9 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
     SRCS
     analyzer_capi_exp_ner_tester.cc
     EXTRA_DEPS
-    ${INFERENCE_C_EXTRA_DEPS}
+    paddle_inference_c_shared
     ARGS
     --infer_model=${CHINESE_NER_INSTALL_DIR}/model)
-  if(WIN32)
-    target_link_libraries(test_analyzer_capi_exp_ner paddle_inference_c_shared)
-  else()
-    target_link_libraries(test_analyzer_capi_exp_ner paddle_inference_c)
-  endif()
 
   if(WITH_GPU)
     inference_analysis_test(
@@ -1332,7 +1298,7 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
   cc_test(
     paddle_infer_api_errors_test
     SRCS paddle_infer_api_errors_tester.cc
-    DEPS paddle_inference_api)
+    DEPS ${inference_api_tester_deps})
 
   if(WITH_GPU AND TENSORRT_FOUND)
     set_tests_properties(trt_resnext_test PROPERTIES TIMEOUT 300)
@@ -1343,7 +1309,11 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
                          PROPERTIES TIMEOUT 300)
     set_tests_properties(test_trt_dynamic_shape_ernie_fp16_ser_deser
                          PROPERTIES TIMEOUT 300)
-    set_tests_properties(test_trt_dynamic_shape_ernie PROPERTIES TIMEOUT 300)
+    set_tests_properties(test_trt_dynamic_shape_ernie PROPERTIES TIMEOUT 480)
+    set_tests_properties(trt_mark_trt_engine_outputs_test PROPERTIES TIMEOUT
+                                                                     300)
+    set_tests_properties(trt_disable_tensorrt_half_ops_test PROPERTIES TIMEOUT
+                                                                       300)
   endif()
 
   if(WITH_MKLDNN)
@@ -1377,7 +1347,11 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
     set_tests_properties(test_analyzer_ernie PROPERTIES TIMEOUT 120)
   endif()
   if(WITH_GPU AND TENSORRT_FOUND)
-    set_tests_properties(trt_mobilenet_test PROPERTIES TIMEOUT 120)
+    set_tests_properties(trt_mobilenet_test PROPERTIES TIMEOUT 240)
+    if(NOT WIN32)
+      set_tests_properties(trt_rebind_stream_test
+                           PROPERTIES TIMEOUT 360 LABELS "RUN_TYPE=EXCLUSIVE")
+    endif()
     if(WITH_MKLDNN)
       set_tests_properties(test_analyzer_bfloat16_resnet50 PROPERTIES TIMEOUT
                                                                       120)
@@ -1445,11 +1419,27 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       --repeat=10)
   endif()
 
-  set(inference_deps ${analysis_deps} paddle_inference_api analysis
-                     naive_executor ${GLOB_PASS_LIB})
+  if(WITH_XPU)
+    inference_analysis_test(
+      xpu_config_resnet50_test
+      SRCS
+      xpu_config_resnet50_test.cc
+      EXTRA_DEPS
+      paddle_inference_shared
+      ARGS
+      --infer_model=${RESNET50_MODEL_DIR})
+    inference_analysis_test(
+      xpu_runtime_config_resnet50_test
+      SRCS
+      xpu_runtime_config_resnet50_test.cc
+      EXTRA_DEPS
+      paddle_inference_shared
+      ARGS
+      --infer_model=${RESNET50_MODEL_DIR})
+  endif()
 
   if(WITH_TESTING)
-    if(NOT APPLE AND NOT WIN32)
+    if(NOT APPLE)
       inference_base_test(
         test_api_impl
         SRCS
@@ -1459,21 +1449,11 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
         ARGS
         --word2vec_dirname=${WORD2VEC_MODEL_DIR}
         --book_dirname=${IMG_CLS_RESNET_INSTALL_DIR})
-    elseif(WIN32)
-      inference_base_test(
-        test_api_impl
-        SRCS
-        api_impl_tester.cc
-        DEPS
-        ${inference_deps}
-        ARGS
-        --word2vec_dirname=${WORD2VEC_MODEL_DIR}
-        --book_dirname=${IMG_CLS_RESNET_INSTALL_DIR})
     endif()
   endif()
 
-  if(NOT APPLE AND NOT WIN32)
-    cc_test_old(
+  if(NOT APPLE)
+    inference_base_test(
       test_analysis_predictor
       SRCS
       analysis_predictor_tester.cc
@@ -1481,31 +1461,18 @@ if(WITH_TESTING AND WITH_INFERENCE_API_TEST)
       paddle_inference_shared
       ARGS
       --dirname=${WORD2VEC_MODEL_DIR})
-  elseif(WIN32)
-    cc_test_old(
-      test_analysis_predictor
-      SRCS
-      analysis_predictor_tester.cc
-      DEPS
-      analysis_predictor
-      benchmark
-      ${inference_deps}
-      ARGS
-      --dirname=${WORD2VEC_MODEL_DIR})
   endif()
 
   if(WITH_TESTING AND WITH_MKLDNN)
-    if(NOT APPLE AND NOT WIN32)
-      cc_test(
+    if(NOT APPLE)
+      inference_base_test(
         test_mkldnn_quantizer
-        SRCS mkldnn_quantizer_tester.cc
-        DEPS paddle_inference_shared ARGS --dirname=${WORD2VEC_MODEL_DIR})
-    elseif(WIN32)
-      cc_test(
-        test_mkldnn_quantizer
-        SRCS mkldnn_quantizer_tester.cc
-        DEPS analysis_predictor benchmark ${inference_deps} ARGS
-             --dirname=${WORD2VEC_MODEL_DIR})
+        SRCS
+        mkldnn_quantizer_tester.cc
+        DEPS
+        paddle_inference_shared
+        ARGS
+        --dirname=${WORD2VEC_MODEL_DIR})
     endif()
   endif()
 

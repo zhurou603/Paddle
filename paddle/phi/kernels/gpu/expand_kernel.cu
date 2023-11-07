@@ -73,8 +73,7 @@ void ExpandKernel(const Context& ctx,
   ctx.template Alloc<T>(out);
   std::vector<const DenseTensor*> ins = {&x};
   std::vector<DenseTensor*> outs = {out};
-  phi::funcs::BroadcastKernel<ElementwiseType::kUnary, T, T>(
-      ctx, ins, &outs, -1, kps::IdentityFunctor<T>());
+  phi::funcs::BroadcastKernel<T>(ctx, ins, &outs, kps::IdentityFunctor<T>());
 }
 
 }  // namespace phi
@@ -85,8 +84,13 @@ PD_REGISTER_KERNEL(expand,
                    phi::ExpandKernel,
                    float,
                    double,
-                   phi::dtype::float16,
-                   phi::dtype::bfloat16,
                    int,
                    int64_t,
-                   bool) {}
+                   bool,
+                   int16_t,
+                   uint8_t,
+                   int8_t,
+                   phi::dtype::float16,
+                   phi::dtype::bfloat16,
+                   phi::dtype::complex<float>,
+                   phi::dtype::complex<double>) {}

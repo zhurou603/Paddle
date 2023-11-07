@@ -17,10 +17,10 @@ import unittest
 import paddle
 import paddle.nn.functional as F
 from paddle import nn, static
-from paddle.distributed.auto_parallel.dist_context import (
+from paddle.distributed.auto_parallel.process_mesh import ProcessMesh
+from paddle.distributed.auto_parallel.static.dist_context import (
     get_default_distributed_context,
 )
-from paddle.distributed.auto_parallel.process_mesh import ProcessMesh
 from paddle.distributed.fleet import auto
 
 paddle.enable_static()
@@ -110,7 +110,7 @@ class TestAutoParallelAPI(unittest.TestCase):
         with ProcessMesh(process_mesh1.mesh, process_mesh1.dim_names):
             linear0, linear1, linear0_out, gelu_out, linear1_out = mlp(input)
 
-        default_program = paddle.fluid.default_main_program()
+        default_program = paddle.base.default_main_program()
         default_dist_context = get_default_distributed_context()
 
         self.assertEqual(len(default_program.blocks[0].ops), 5)

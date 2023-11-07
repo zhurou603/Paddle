@@ -112,9 +112,7 @@ class PADDLE_API CustomOpKernelContext {
   void EmplaceBackOutput(Tensor&& output);
   void EmplaceBackOutputs(const std::vector<Tensor>& outputs);
   void EmplaceBackAttr(paddle::any attr);
-  void EmplaceBackAttrs(const std::vector<paddle::any>& attrs) {
-    attrs_ = std::move(attrs);
-  }
+  void EmplaceBackAttrs(const std::vector<paddle::any>& attrs);
   const std::pair<size_t, size_t>& InputRangeAt(size_t idx) const;
   const std::pair<size_t, size_t>& OutputRangeAt(size_t idx) const;
 
@@ -125,16 +123,12 @@ class PADDLE_API CustomOpKernelContext {
   paddle::optional<Tensor> OptionalInputAt(size_t idx);
   paddle::optional<std::vector<Tensor>> OptionalInputsBetween(size_t start,
                                                               size_t end);
-  const std::vector<paddle::any>& Attrs() const { return attrs_; }
-  const std::vector<std::pair<size_t, size_t>>& InputRange() {
-    return input_range_;
-  }
-  const std::vector<std::pair<size_t, size_t>>& OutputRange() {
-    return output_range_;
-  }
+  const std::vector<paddle::any>& Attrs() const;
+  const std::vector<std::pair<size_t, size_t>>& InputRange();
+  const std::vector<std::pair<size_t, size_t>>& OutputRange();
   Tensor* MutableOutputAt(size_t idx);
-  std::vector<Tensor*> MutableOutputBetweeen(size_t start, size_t end);
-  std::vector<Tensor> OutputsBetweeen(size_t start, size_t end);
+  std::vector<Tensor*> MutableOutputBetween(size_t start, size_t end);
+  std::vector<Tensor> OutputsBetween(size_t start, size_t end);
   std::vector<Tensor>* AllMutableOutput();
 
   template <typename AttrType>
@@ -391,7 +385,7 @@ struct KernelFuncImpl<Return (*)(Args...), impl_fn> {
     template <int in_idx, int attr_idx, int out_idx, typename... PreviousArgs>
     static void Compute(CustomOpKernelContext* ctx, PreviousArgs&... pargs) {
       auto& range = ctx->OutputRangeAt(out_idx);
-      auto arg = ctx->MutableOutputBetweeen(range.first, range.second);
+      auto arg = ctx->MutableOutputBetween(range.first, range.second);
       ComputeCallHelper<
           Tail...>::template Compute<in_idx, attr_idx, out_idx + 1>(ctx,
                                                                     pargs...,
@@ -649,36 +643,72 @@ struct InferShapeFuncImpl<Return (*)(Args...), impl_fn> {
 // Record Op Infer dtype core function
 using InferDtypeFunc = std::vector<DataType> (*)(
     const std::vector<DataType>& input_dtypes,
-    const std::vector<std::vector<DataType>>& vec_input_dtypes);
+    const std::vector<std::vector<DataType>>& vec_input_dtypes,
+    const std::vector<paddle::any>& attrs);
 
-#define PD_SPECIALIZE_InferDtypeCallHelper_TO_DTYPE(input_type)              \
+#define PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPE(input_type)     \
+  template <typename... Tail>                                        \
+  struct InferDtypeCallHelper<input_type, Tail...> {                 \
+    template <int in_idx,                                            \
+              int vec_in_idx,                                        \
+              int attr_idx,                                          \
+              typename... PreviousArgs>                              \
+    static Return InferDtype(                                        \
+        const std::vector<DataType>& input_dtypes,                   \
+        const std::vector<std::vector<DataType>>& vec_input_dtypes,  \
+        const std::vector<paddle::any>& attrs,                       \
+        const PreviousArgs&... pargs) {                              \
+      input_type arg = input_dtypes[in_idx];                         \
+      return InferDtypeCallHelper<Tail...>::                         \
+          template InferDtype<in_idx + 1, vec_in_idx, attr_idx>(     \
+              input_dtypes, vec_input_dtypes, attrs, pargs..., arg); \
+    }                                                                \
+  }
+
+#define PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPES(input_type)    \
+  template <typename... Tail>                                        \
+  struct InferDtypeCallHelper<input_type, Tail...> {                 \
+    template <int in_idx,                                            \
+              int vec_in_idx,                                        \
+              int attr_idx,                                          \
+              typename... PreviousArgs>                              \
+    static Return InferDtype(                                        \
+        const std::vector<DataType>& input_dtypes,                   \
+        const std::vector<std::vector<DataType>>& vec_input_dtypes,  \
+        const std::vector<paddle::any>& attrs,                       \
+        const PreviousArgs&... pargs) {                              \
+      input_type arg = vec_input_dtypes[vec_in_idx];                 \
+      return InferDtypeCallHelper<Tail...>::                         \
+          template InferDtype<in_idx, vec_in_idx + 1, attr_idx>(     \
+              input_dtypes, vec_input_dtypes, attrs, pargs..., arg); \
+    }                                                                \
+  }
+
+#define PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(attr_type)               \
   template <typename... Tail>                                                \
-  struct InferDtypeCallHelper<input_type, Tail...> {                         \
-    template <int in_idx, int vec_in_idx, typename... PreviousArgs>          \
+  struct InferDtypeCallHelper<attr_type, Tail...> {                          \
+    template <int in_idx,                                                    \
+              int vec_in_idx,                                                \
+              int attr_idx,                                                  \
+              typename... PreviousArgs>                                      \
     static Return InferDtype(                                                \
         const std::vector<DataType>& input_dtypes,                           \
         const std::vector<std::vector<DataType>>& vec_input_dtypes,          \
+        const std::vector<paddle::any>& attrs,                               \
         const PreviousArgs&... pargs) {                                      \
-      input_type arg = input_dtypes[in_idx];                                 \
-      return InferDtypeCallHelper<Tail...>::template InferDtype<in_idx + 1,  \
-                                                                vec_in_idx>( \
-          input_dtypes, vec_input_dtypes, pargs..., arg);                    \
+      try {                                                                  \
+        attr_type arg = paddle::any_cast<attr_type>(attrs[attr_idx]);        \
+        return InferDtypeCallHelper<Tail...>::                               \
+            template InferDtype<in_idx, vec_in_idx, attr_idx + 1>(           \
+                input_dtypes, vec_input_dtypes, attrs, pargs..., arg);       \
+      } catch (paddle::bad_any_cast&) {                                      \
+        PD_THROW(                                                            \
+            "Attribute cast error in custom operator InferDtypeFn. "         \
+            "Expected " #attr_type                                           \
+            " value. InferDtypeFn's attribute list must be exactly same as " \
+            "Forward KernelFn's attribute list");                            \
+      }                                                                      \
     }                                                                        \
-  }
-
-#define PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPES(input_type)   \
-  template <typename... Tail>                                       \
-  struct InferDtypeCallHelper<input_type, Tail...> {                \
-    template <int in_idx, int vec_in_idx, typename... PreviousArgs> \
-    static Return InferDtype(                                       \
-        const std::vector<DataType>& input_dtypes,                  \
-        const std::vector<std::vector<DataType>>& vec_input_dtypes, \
-        const PreviousArgs&... pargs) {                             \
-      input_type arg = vec_input_dtypes[vec_in_idx];                \
-      return InferDtypeCallHelper<Tail...>::                        \
-          template InferDtype<in_idx, vec_in_idx + 1>(              \
-              input_dtypes, vec_input_dtypes, pargs..., arg);       \
-    }                                                               \
   }
 
 template <typename F, F f>
@@ -688,35 +718,39 @@ template <typename Return, typename... Args, Return (*impl_fn)(Args...)>
 struct InferDtypeFuncImpl<Return (*)(Args...), impl_fn> {
   static Return InferDtype(
       const std::vector<DataType>& input_dtypes,
-      const std::vector<std::vector<DataType>>& vec_input_dtypes) {
-    return InferDtypeCallHelper<Args..., TypeTag<int>>::template InferDtype<0,
-                                                                            0>(
-        input_dtypes, vec_input_dtypes);
+      const std::vector<std::vector<DataType>>& vec_input_dtypes,
+      const std::vector<paddle::any>& attrs) {
+    return InferDtypeCallHelper<Args..., TypeTag<int>>::
+        template InferDtype<0, 0, 0>(input_dtypes, vec_input_dtypes, attrs);
   }
 
  private:
   template <typename... RemainingArgs>
   struct InferDtypeCallHelper;
 
-  PD_SPECIALIZE_InferDtypeCallHelper_TO_DTYPE(const DataType&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPE(const DataType&);
   PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPES(const std::vector<DataType>&);
 
   template <typename... Tail>
   struct InferDtypeCallHelper<const paddle::optional<DataType>&, Tail...> {
-    template <int in_idx, int vec_in_idx, typename... PreviousArgs>
+    template <int in_idx,
+              int vec_in_idx,
+              int attr_idx,
+              typename... PreviousArgs>
     static Return InferDtype(
         const std::vector<DataType>& input_dtypes,
         const std::vector<std::vector<DataType>>& vec_input_dtypes,
+        const std::vector<paddle::any>& attrs,
         const PreviousArgs&... pargs) {
       const DataType& arg = input_dtypes[in_idx];
       if (arg == DataType::UNDEFINED) {
-        return InferDtypeCallHelper<Tail...>::template InferDtype<in_idx + 1,
-                                                                  vec_in_idx>(
-            input_dtypes, vec_input_dtypes, pargs..., paddle::none);
+        return InferDtypeCallHelper<Tail...>::
+            template InferDtype<in_idx + 1, vec_in_idx, attr_idx>(
+                input_dtypes, vec_input_dtypes, attrs, pargs..., paddle::none);
       } else {
-        return InferDtypeCallHelper<Tail...>::template InferDtype<in_idx + 1,
-                                                                  vec_in_idx>(
-            input_dtypes, vec_input_dtypes, pargs..., arg);
+        return InferDtypeCallHelper<Tail...>::
+            template InferDtype<in_idx + 1, vec_in_idx, attr_idx>(
+                input_dtypes, vec_input_dtypes, attrs, pargs..., arg);
       }
     }
   };
@@ -724,36 +758,65 @@ struct InferDtypeFuncImpl<Return (*)(Args...), impl_fn> {
   template <typename... Tail>
   struct InferDtypeCallHelper<const paddle::optional<std::vector<DataType>>&,
                               Tail...> {
-    template <int in_idx, int vec_in_idx, typename... PreviousArgs>
+    template <int in_idx,
+              int vec_in_idx,
+              int attr_idx,
+              typename... PreviousArgs>
     static Return InferDtype(
         const std::vector<DataType>& input_dtypes,
         const std::vector<std::vector<DataType>>& vec_input_dtypes,
+        const std::vector<paddle::any>& attrs,
         const PreviousArgs&... pargs) {
       const std::vector<DataType>& arg = vec_input_dtypes[vec_in_idx];
       if (arg.empty()) {
         return InferDtypeCallHelper<Tail...>::
-            template InferDtype<in_idx, vec_in_idx + 1>(
-                input_dtypes, vec_input_dtypes, pargs..., paddle::none);
+            template InferDtype<in_idx, vec_in_idx + 1, attr_idx>(
+                input_dtypes, vec_input_dtypes, attrs, pargs..., paddle::none);
       } else {
         return InferDtypeCallHelper<Tail...>::
-            template InferDtype<in_idx, vec_in_idx + 1>(
-                input_dtypes, vec_input_dtypes, pargs..., arg);
+            template InferDtype<in_idx, vec_in_idx + 1, attr_idx>(
+                input_dtypes, vec_input_dtypes, attrs, pargs..., arg);
       }
     }
   };
 
-  // NOTE(chenweihang): Used to be compatible with the 2.0.1 released
+  // NOTE(HongyuJia): Used to be compatible with the 2.0.1 released
   // interface, and will be deprecated in the future
-  PD_SPECIALIZE_InferDtypeCallHelper_TO_DTYPE(DataType);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPE(DataType);
   PD_SPECIALIZE_InferDtypeCallHelper_FOR_DTYPES(std::vector<DataType>);
+
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(bool);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(int);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(float);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(int64_t);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const std::string&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const std::vector<int>&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const std::vector<float>&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const std::vector<int64_t>&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const std::vector<std::string>&);
+
+  // NOTE(HongyuJia): Used to be compatible with the 2.0.1 released
+  // interface, and will be deprecated in the future
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const bool&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const int&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const float&);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(const int64_t&);
+
+  // NOTE(HongyuJia): Used to be compatible with the 2.1 released
+  // interface, but not recommended
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(std::string);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(std::vector<int>);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(std::vector<float>);
+  PD_SPECIALIZE_InferDtypeCallHelper_FOR_ATTR(std::vector<std::string>);
 
   // end: base template
   template <typename T>
   struct InferDtypeCallHelper<TypeTag<T>> {
-    template <int in_idx, int vec_in_idx>
+    template <int in_idx, int vec_in_idx, int attr_idx>
     static Return InferDtype(
         const std::vector<DataType>& input_dtypes,
         const std::vector<std::vector<DataType>>& vec_input_dtypes,
+        const std::vector<paddle::any>& attrs,
         const Args&... args) {
       return impl_fn(args...);
     }
@@ -811,38 +874,20 @@ class PADDLE_API OpMetaInfo {
 //////////////// Op Meta Info Helper /////////////////
 class OpMetaInfoHelper {
  public:
-  static const std::string& GetOpName(const paddle::OpMetaInfo& info) {
-    return info.name_;
-  }
+  static const std::string& GetOpName(const paddle::OpMetaInfo& info);
   static const std::vector<std::string>& GetInputs(
-      const paddle::OpMetaInfo& info) {
-    return info.inputs_;
-  }
+      const paddle::OpMetaInfo& info);
   static const std::vector<std::string>& GetOutputs(
-      const paddle::OpMetaInfo& info) {
-    return info.outputs_;
-  }
+      const paddle::OpMetaInfo& info);
   static const std::vector<std::string>& GetAttrs(
-      const paddle::OpMetaInfo& info) {
-    return info.attrs_;
-  }
+      const paddle::OpMetaInfo& info);
   static const std::unordered_map<std::string, std::string>& GetInplaceMap(
-      const paddle::OpMetaInfo& info) {
-    return info.inplace_map_;
-  }
+      const paddle::OpMetaInfo& info);
   static const std::unordered_map<std::string, std::string>&
-  GetInplaceReverseMap(const paddle::OpMetaInfo& info) {
-    return info.inplace_reverse_map_;
-  }
-  static const KernelFunc& GetKernelFn(const paddle::OpMetaInfo& info) {
-    return info.kernel_fn_;
-  }
-  static const InferShapeFunc& GetInferShapeFn(const paddle::OpMetaInfo& info) {
-    return info.infer_shape_fn_;
-  }
-  static const InferDtypeFunc& GetInferDtypeFn(const paddle::OpMetaInfo& info) {
-    return info.infer_dtype_fn_;
-  }
+  GetInplaceReverseMap(const paddle::OpMetaInfo& info);
+  static const KernelFunc& GetKernelFn(const paddle::OpMetaInfo& info);
+  static const InferShapeFunc& GetInferShapeFn(const paddle::OpMetaInfo& info);
+  static const InferDtypeFunc& GetInferDtypeFn(const paddle::OpMetaInfo& info);
 };
 
 //////////////// Op Meta Info Map /////////////////

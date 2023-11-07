@@ -14,9 +14,9 @@
 
 import unittest
 
-import config
 import numpy as np
 import scipy.stats
+from distribution import config
 from parameterize import TEST_CASE_NAME, parameterize_cls, place, xrand
 from test_distribution_lognormal import LogNormalNumpy
 
@@ -134,7 +134,7 @@ class TestLogNormalSample(unittest.TestCase):
             scale = paddle.static.data(
                 'scale', self.scale.shape, self.scale.dtype
             )
-            n = 100000
+            n = 1000000
             self.sample_shape = (n,)
             self.rsample_shape = (n,)
             self.paddle_lognormal = LogNormal(loc=loc, scale=scale)

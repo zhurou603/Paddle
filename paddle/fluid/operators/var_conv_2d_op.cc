@@ -17,7 +17,7 @@ limitations under the License. */
 #include <memory>
 #include <vector>
 
-#include "paddle/fluid/platform/dynload/mklml.h"
+#include "paddle/phi/backends/dynload/mklml.h"
 #include "paddle/phi/kernels/funcs/blas/blas.h"
 #include "paddle/phi/kernels/funcs/math_function.h"
 
@@ -523,8 +523,7 @@ class CPUVarConv2dOPGradKernel : public framework::OpKernel<T> {
 }  // namespace paddle
 
 namespace ops = paddle::operators;
-namespace plt = paddle::platform;
-namespace frm = paddle::framework;
+
 REGISTER_OPERATOR(var_conv_2d,
                   ops::VarConv2dOP,
                   ops::VarConv2dOpMaker,

@@ -15,7 +15,7 @@
 from typing import Optional, Sequence, Tuple, Union
 
 import paddle
-from paddle.fluid import framework
+from paddle.base import framework
 
 
 def as_tensors(xs):
@@ -187,7 +187,7 @@ class Hessian(Jacobian):
 class _Jacobian:
     """The base class for computing Jacobian matrix.
 
-    ``_Jacobian`` implementes the core logic of multidimensional index and lazy
+    ``_Jacobian`` implements the core logic of multidimensional index and lazy
     evaluation for Jacobian matrix, subclass only need to overwrite following
     methods:
 
@@ -436,7 +436,7 @@ def _multi_index(indexes, shape):
                     index.start + shape[i] if index.start < 0 else index.start,
                     index.stop + shape[i] if index.stop < 0 else index.stop,
                     # Negative step means index backward, no need to convert to
-                    # positive interger.
+                    # positive integer.
                     index.step,
                 )
             )
@@ -465,12 +465,12 @@ def jacobian(
     The ``xs`` tuples are identical in one-to-one correspondence.
 
     - When ``batch_axis=None``, only 0-dimensional Tensor or 1-dimensional Tensor is
-          supported, assuming the shape of ``xs`` is ``[N, ]``, the shape of ``ys`` is
-          ``[M, ]``, then the output Jacobian matrix shape is ``[M, N]``.
+      supported, assuming the shape of ``xs`` is ``[N, ]``, the shape of ``ys`` is
+      ``[M, ]``, then the output Jacobian matrix shape is ``[M, N]``.
 
     - When ``batch_axis=0``, only 1-dimensional Tensor or 2-dimensional Tensor is
-          supported, assuming the shape of ``xs`` is ``[B, N]``, The shape of ``ys`` is
-          ``[B, M]``, then the output Jacobian matrix shape is ``[B, M, N]``.
+      supported, assuming the shape of ``xs`` is ``[B, N]``, The shape of ``ys`` is
+      ``[B, M]``, then the output Jacobian matrix shape is ``[B, M, N]``.
 
     After the ``Jacobian`` object is created, the actual calculation process does not
     occur, but the lazy evaluation method is used for calculation. It can be
@@ -501,21 +501,23 @@ def jacobian(
 
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            x1 = paddle.randn([3, ])
-            x2 = paddle.randn([3, ])
-            x1.stop_gradient = False
-            x2.stop_gradient = False
+            >>> x1 = paddle.randn([3, ])
+            >>> x2 = paddle.randn([3, ])
+            >>> x1.stop_gradient = False
+            >>> x2.stop_gradient = False
 
-            y = x1 + x2
+            >>> y = x1 + x2
 
-            J = paddle.autograd.jacobian(y, (x1, x2))
-            J_y_x1 = J[0][:] # evaluate result of dy/dx1
-            J_y_x2 = J[1][:] # evaluate result of dy/dx2
+            >>> J = paddle.autograd.jacobian(y, (x1, x2))
+            >>> J_y_x1 = J[0][:] # evaluate result of dy/dx1
+            >>> J_y_x2 = J[1][:] # evaluate result of dy/dx2
 
-            print(J_y_x1.shape) # [3, 3]
-            print(J_y_x2.shape) # [3, 3]
+            >>> print(J_y_x1.shape)
+            [3, 3]
+            >>> print(J_y_x2.shape)
+            [3, 3]
     """
 
     if batch_axis is not None and batch_axis != 0:
@@ -553,15 +555,14 @@ def hessian(
     ``batch_axis`` means The position of the batch dimension of the parameter data.
 
     When the input ``xs`` is a Tensor tuple, the returned result is a ``Hessian`` tuple,
-    assuming that the internal shape of the ``xs`` tuple is composed of
-    ``([M1, ], [M2, ]) ``, the shape of the returned result consists of
-    ``(([M1, M1], [M1, M2]), ([M2, M1], [M2, M2]))``
+    assuming that the internal shape of the ``xs`` tuple is composed of ``([M1, ], [M2, ])``, the shape of the returned
+    result consists of ``(([M1, M1], [M1, M2]), ([M2, M1], [M2, M2]))``
 
     - When ``batch_axis=None``, only 0-dimensional Tensor or 1-dimensional Tensor is
-        supported, assuming that the shape of ``xs`` is ``[N, ]``, and the shape of ``ys`` is ``[ ]``(0-dimensional Tensor), the final output is a single Hessian matrix whose shape is ``[N, N]``.
+      supported, assuming that the shape of ``xs`` is ``[N, ]``, and the shape of ``ys`` is ``[ ]`` (0-dimensional Tensor), the final output is a single Hessian matrix whose shape is ``[N, N]``.
 
     - When ``batch_axis=0``, only 1-dimensional Tensor or 2-dimensional Tensor is
-        supported, assuming that the shape of ``xs`` is ``[B, N]``, and the shape of ``ys`` is `` [B, ]``, the final output Jacobian matrix shape is ``[B, N, N]``.
+      supported, assuming that the shape of ``xs`` is ``[B, N]``, and the shape of ``ys`` is ``[B, ]``, the final output Jacobian matrix shape is ``[B, N, N]``.
 
     After the ``Hessian`` object is created, the complete calculation process does not
     occur, but a partial lazy evaluation method is used for calculation. It can be
@@ -584,25 +585,29 @@ def hessian(
 
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            x1 = paddle.randn([3, ])
-            x2 = paddle.randn([4, ])
-            x1.stop_gradient = False
-            x2.stop_gradient = False
+            >>> x1 = paddle.randn([3, ])
+            >>> x2 = paddle.randn([4, ])
+            >>> x1.stop_gradient = False
+            >>> x2.stop_gradient = False
 
-            y = x1.sum() + x2.sum()
+            >>> y = x1.sum() + x2.sum()
 
-            H = paddle.autograd.hessian(y, (x1, x2))
-            H_y_x1_x1 = H[0][0][:] # evaluate result of ddy/dx1x1
-            H_y_x1_x2 = H[0][1][:] # evaluate result of ddy/dx1x2
-            H_y_x2_x1 = H[1][0][:] # evaluate result of ddy/dx2x1
-            H_y_x2_x2 = H[1][1][:] # evaluate result of ddy/dx2x2
+            >>> H = paddle.autograd.hessian(y, (x1, x2))
+            >>> H_y_x1_x1 = H[0][0][:] # evaluate result of ddy/dx1x1
+            >>> H_y_x1_x2 = H[0][1][:] # evaluate result of ddy/dx1x2
+            >>> H_y_x2_x1 = H[1][0][:] # evaluate result of ddy/dx2x1
+            >>> H_y_x2_x2 = H[1][1][:] # evaluate result of ddy/dx2x2
 
-            print(H_y_x1_x1.shape) # [3, 3]
-            print(H_y_x1_x2.shape) # [3, 4]
-            print(H_y_x2_x1.shape) # [4, 3]
-            print(H_y_x2_x2.shape) # [4, 4]
+            >>> print(H_y_x1_x1.shape)
+            [3, 3]
+            >>> print(H_y_x1_x2.shape)
+            [3, 4]
+            >>> print(H_y_x2_x1.shape)
+            [4, 3]
+            >>> print(H_y_x2_x2.shape)
+            [4, 4]
     """
 
     if batch_axis is None:
@@ -690,13 +695,13 @@ def _grad_for_jacobian(ys, xs, v=None):
             Tensor is the sum of gradients of outputs with respect to the i-th
             inputs.
     """
-    if paddle.fluid._non_static_mode():
-        # paddle.grad returns a list though the inputs is a signle Tensor. The
+    if paddle.in_dynamic_mode():
+        # paddle.grad returns a list though the inputs is a single Tensor. The
         # follow code snippet fixes the problem by return the first element of
-        # xs_grad when the xs is a signle Tensor.
+        # xs_grad when the xs is a single Tensor.
         xs_grad = paddle.grad(ys, xs, v, create_graph=True, allow_unused=True)
         if (
-            isinstance(xs, paddle.fluid.framework.Variable)
+            isinstance(xs, paddle.base.framework.Variable)
             and isinstance(xs_grad, Sequence)
             and len(xs_grad) > 0
         ):

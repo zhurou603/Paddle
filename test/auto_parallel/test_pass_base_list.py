@@ -13,17 +13,14 @@
 # limitations under the License.
 
 import random
-import sys
 import unittest
 
 import numpy as np
 from get_gpt_model import FakeDataset, generate_model
+from test_sparse_addmm_op import get_cuda_version
 
 import paddle
 from paddle.distributed.fleet import auto
-
-sys.path.append("../../python/paddle/fluid/tests/unittests")
-from test_sparse_addmm_op import get_cuda_version
 
 
 def apply_pass(use_fused_passes=False, fused_passes_list=[]):
@@ -37,8 +34,8 @@ def apply_pass(use_fused_passes=False, fused_passes_list=[]):
 
 
 def reset_prog():
-    paddle.fluid.framework.switch_main_program(paddle.static.Program())
-    paddle.fluid.framework.switch_startup_program(paddle.static.Program())
+    paddle.base.framework.switch_main_program(paddle.static.Program())
+    paddle.base.framework.switch_startup_program(paddle.static.Program())
 
 
 class TestFusedPassBaseList(unittest.TestCase):
@@ -54,7 +51,7 @@ class TestFusedPassBaseList(unittest.TestCase):
         paddle.seed(2021)
         np.random.seed(2021)
         random.seed(2021)
-        place = paddle.fluid.CUDAPlace(paddle.distributed.ParallelEnv().dev_id)
+        place = paddle.base.CUDAPlace(paddle.distributed.ParallelEnv().dev_id)
         engine._executor = paddle.static.Executor(place)
 
     def get_engine(self, use_fused_passes=False, fused_passes_list=[]):

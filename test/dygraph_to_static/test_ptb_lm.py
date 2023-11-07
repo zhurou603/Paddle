@@ -17,12 +17,13 @@ import time
 import unittest
 
 import numpy as np
+from dygraph_to_static_utils_new import Dy2StTestBase, compare_legacy_with_pir
 
 import paddle
-from paddle import fluid
-from paddle.fluid.dygraph.base import to_variable
-from paddle.fluid.optimizer import SGDOptimizer
+from paddle import base
+from paddle.base.dygraph.base import to_variable
 from paddle.jit.api import to_static
+from paddle.optimizer import SGD
 
 PRINT_STEP = 20
 SEED = 2020
@@ -48,7 +49,7 @@ class SimpleLSTMRNN(paddle.nn.Layer):
 
         for i in range(self._num_layers):
             weight_1 = self.create_parameter(
-                attr=fluid.ParamAttr(
+                attr=base.ParamAttr(
                     initializer=paddle.nn.initializer.Uniform(
                         low=-self._init_scale, high=self._init_scale
                     )
@@ -61,7 +62,7 @@ class SimpleLSTMRNN(paddle.nn.Layer):
             )
             self.weight_1_arr.append(self.add_parameter('w_%d' % i, weight_1))
             bias_1 = self.create_parameter(
-                attr=fluid.ParamAttr(
+                attr=base.ParamAttr(
                     initializer=paddle.nn.initializer.Uniform(
                         low=-self._init_scale, high=self._init_scale
                     )
@@ -156,7 +157,7 @@ class PtbModel(paddle.nn.Layer):
             vocab_size,
             hidden_size,
             sparse=False,
-            weight_attr=fluid.ParamAttr(
+            weight_attr=base.ParamAttr(
                 name='embedding_para',
                 initializer=paddle.nn.initializer.Uniform(
                     low=-init_scale, high=init_scale
@@ -164,7 +165,7 @@ class PtbModel(paddle.nn.Layer):
             ),
         )
         self.softmax_weight = self.create_parameter(
-            attr=fluid.ParamAttr(),
+            attr=base.ParamAttr(),
             shape=[self.hidden_size, self.vocab_size],
             dtype="float32",
             default_initializer=paddle.nn.initializer.Uniform(
@@ -172,7 +173,7 @@ class PtbModel(paddle.nn.Layer):
             ),
         )
         self.softmax_bias = self.create_parameter(
-            attr=fluid.ParamAttr(),
+            attr=base.ParamAttr(),
             shape=[self.vocab_size],
             dtype="float32",
             default_initializer=paddle.nn.initializer.Uniform(
@@ -185,7 +186,6 @@ class PtbModel(paddle.nn.Layer):
 
     @to_static
     def forward(self, input, label, init_hidden, init_cell):
-
         init_h = paddle.reshape(
             init_hidden, shape=[self.num_layers, -1, self.hidden_size]
         )
@@ -222,12 +222,10 @@ class PtbModel(paddle.nn.Layer):
         return loss, last_hidden, last_cell
 
     def debug_emb(self):
-
         np.save("emb_grad", self.x_emb.gradient())
 
 
 def train(place):
-
     num_layers = 1
     batch_size = 4
     hidden_size = 10
@@ -238,7 +236,7 @@ def train(place):
     vocab_size = 1000
     batch_num = 200
 
-    with fluid.dygraph.guard(place):
+    with base.dygraph.guard(place):
         paddle.seed(SEED)
         paddle.framework.random._manual_program_seed(SEED)
         ptb_model = PtbModel(
@@ -250,12 +248,9 @@ def train(place):
             dropout=dropout,
         )
 
-        sgd = SGDOptimizer(
-            learning_rate=1e-3, parameter_list=ptb_model.parameters()
-        )
+        sgd = SGD(learning_rate=1e-3, parameters=ptb_model.parameters())
 
         for epoch_id in range(max_epoch):
-
             total_loss = 0.0
             iters = 0.0
             total_sample = 0
@@ -320,17 +315,18 @@ def train_dygraph(place):
     return train(place)
 
 
+@compare_legacy_with_pir
 def train_static(place):
     paddle.jit.enable_to_static(True)
     return train(place)
 
 
-class TestPtb(unittest.TestCase):
+class TestPtb(Dy2StTestBase):
     def setUp(self):
         self.place = (
-            fluid.CUDAPlace(0)
-            if fluid.is_compiled_with_cuda()
-            else fluid.CPUPlace()
+            base.CUDAPlace(0)
+            if base.is_compiled_with_cuda()
+            else base.CPUPlace()
         )
 
     def test_check_result(self):

@@ -59,6 +59,8 @@ BuddyAllocator::BuddyAllocator(
 #endif
   }
 #endif
+  VLOG(1) << "min_chunk_size_: " << min_chunk_size_
+          << ", max_chunk_size_:" << max_chunk_size_;
 }
 
 BuddyAllocator::~BuddyAllocator() {
@@ -228,7 +230,7 @@ void* BuddyAllocator::SystemAlloc(size_t size) {
   size_t index = 0;
   void* p = system_allocator_->Alloc(&index, size);
 
-  VLOG(10) << "Allocated " << p << " from system allocator.";
+  VLOG(8) << "Allocated " << p << " size " << size << " from system allocator.";
 
   if (p == nullptr) return nullptr;
 
@@ -240,7 +242,7 @@ void* BuddyAllocator::SystemAlloc(size_t size) {
 
 BuddyAllocator::PoolSet::iterator BuddyAllocator::RefillPool(
     size_t request_bytes) {
-  size_t allocate_bytes = max_chunk_size_;
+  size_t allocate_bytes = max_chunk_size_;  // NOLINT
   size_t index = 0;
 
 #ifdef PADDLE_WITH_CUSTOM_DEVICE
@@ -258,8 +260,8 @@ BuddyAllocator::PoolSet::iterator BuddyAllocator::RefillPool(
 
   if (p == nullptr) return pool_.end();
 
-  VLOG(10) << "Creating and inserting new block " << p
-           << " from system allocator";
+  VLOG(8) << "Creating and inserting new block " << p << " size "
+          << allocate_bytes << " from system allocator";
 
   static_cast<MemoryBlock*>(p)->Init(&cache_,
                                      MemoryBlock::FREE_CHUNK,
@@ -280,7 +282,7 @@ BuddyAllocator::PoolSet::iterator BuddyAllocator::RefillPool(
 BuddyAllocator::PoolSet::iterator BuddyAllocator::FindExistChunk(size_t size) {
   size_t index = 0;
 
-  while (1) {
+  while (true) {
     auto it = pool_.lower_bound(IndexSizeAddress(index, size, nullptr));
 
     // no match chunk memory

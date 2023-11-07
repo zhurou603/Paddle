@@ -36,6 +36,7 @@ limitations under the License. */
 #include "paddle/phi/core/flags.h"
 #include "paddle/phi/core/kernel_registry.h"
 #include "paddle/phi/core/macros.h"
+#include "paddle/utils/test_macros.h"
 
 namespace paddle {
 namespace framework {
@@ -104,7 +105,7 @@ struct OperatorRegistrar : public Registrar {
   }
 };
 
-class OpRegistry {
+class TEST_API OpRegistry {
  public:
   /**
    * @brief Return an OperatorBase constructed by type, inputs, outputs, attrs.
@@ -257,9 +258,9 @@ struct OpKernelRegistrarFunctorEx<PlaceType,
                                   true,
                                   I,
                                   DataTypeAndKernelType...> {
-  void operator()(const char* op_type,
-                  const char* library_type,
-                  int customized_type_value) const {}
+  void operator()(const char* op_type UNUSED,
+                  const char* library_type UNUSED,
+                  int customized_type_value UNUSED) const {}
 };
 
 template <typename PlaceType, size_t I, typename... DataTypeAndKernelType>
@@ -374,9 +375,6 @@ struct OpKernelRegistrarFunctorEx<PlaceType,
 #define REGISTER_OP_XPU_KERNEL(op_type, ...) \
   REGISTER_OP_KERNEL(op_type, XPU, ::paddle::platform::XPUPlace, __VA_ARGS__)
 
-#define REGISTER_OP_NPU_KERNEL(op_type, ...) \
-  REGISTER_OP_KERNEL(op_type, NPU, ::paddle::platform::NPUPlace, __VA_ARGS__)
-
 #define REGISTER_OP_KERNEL_EX(op_type, library_type, place_class,  \
                               customized_name,                     \
                               customized_type_value,               \
@@ -410,12 +408,6 @@ struct OpKernelRegistrarFunctorEx<PlaceType,
 #define REGISTER_OP_XPU_KERNEL_FUNCTOR(op_type, ...)                  \
   REGISTER_OP_KERNEL_EX(                                              \
       op_type, XPU, ::paddle::platform::XPUPlace, DEFAULT_TYPE,       \
-      ::paddle::framework::OpKernelType::kDefaultCustomizedTypeValue, \
-      __VA_ARGS__)
-
-#define REGISTER_OP_NPU_KERNEL_FUNCTOR(op_type, ...)                  \
-  REGISTER_OP_KERNEL_EX(                                              \
-      op_type, NPU, ::paddle::platform::NPUPlace, DEFAULT_TYPE,       \
       ::paddle::framework::OpKernelType::kDefaultCustomizedTypeValue, \
       __VA_ARGS__)
 

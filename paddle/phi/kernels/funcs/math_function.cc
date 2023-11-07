@@ -34,6 +34,10 @@ limitations under the License. */
 #include "paddle/phi/kernels/funcs/eigen/common.h"
 #include "paddle/phi/kernels/funcs/math_function_impl.h"
 #include "unsupported/Eigen/CXX11/Tensor"
+#ifdef PADDLE_WITH_CUSTOM_DEVICE
+#include "paddle/phi/api/lib/kernel_dispatch.h"
+#include "paddle/phi/core/kernel_factory.h"
+#endif
 
 namespace phi {
 namespace funcs {
@@ -49,6 +53,7 @@ template struct SetConstant<phi::CPUContext, int>;
 template struct SetConstant<phi::CPUContext, int64_t>;
 template struct SetConstant<phi::CPUContext, bool>;
 template struct SetConstant<phi::CPUContext, uint8_t>;
+template struct SetConstant<phi::CPUContext, int8_t>;
 template struct SetConstant<phi::CPUContext, phi::dtype::complex<float>>;
 template struct SetConstant<phi::CPUContext, phi::dtype::complex<double>>;
 
@@ -58,6 +63,7 @@ template struct SetConstant<phi::XPUContext, phi::dtype::bfloat16>;
 template struct SetConstant<phi::XPUContext, float>;
 template struct SetConstant<phi::XPUContext, double>;
 template struct SetConstant<phi::XPUContext, uint8_t>;
+template struct SetConstant<phi::XPUContext, int8_t>;
 template struct SetConstant<phi::XPUContext, int16_t>;
 template struct SetConstant<phi::XPUContext, int>;
 template struct SetConstant<phi::XPUContext, int64_t>;
@@ -92,11 +98,11 @@ DEFINE_CPU_TRANS(6);
 
 template <typename DeviceContext, typename T>
 void TransposeNormal<DeviceContext, T>::operator()(
-    const DeviceContext& context,
+    const DeviceContext& context UNUSED,
     const phi::DenseTensor& in,
     phi::DenseTensor* out,
     const std::vector<int>& axis) {
-  const int rank = axis.size();
+  const int rank = static_cast<const int>(axis.size());
   auto in_stride = phi::stride(in.dims());
   auto out_stride = phi::stride(out->dims());
   const T* in_ptr = in.data<T>();
@@ -162,19 +168,6 @@ void set_constant_with_place<phi::XPUPlace>(const phi::DeviceContext& context,
 }
 
 template <>
-void set_constant_with_place<phi::NPUPlace>(const phi::DeviceContext& context,
-                                            phi::DenseTensor* tensor,
-                                            float value) {
-  PADDLE_THROW(phi::errors::Unimplemented("NPUPlace is not supported"));
-}
-
-template <>
-void set_constant_with_place<phi::NPUPinnedPlace>(
-    const phi::DeviceContext& context, phi::DenseTensor* tensor, float value) {
-  PADDLE_THROW(phi::errors::Unimplemented("NPUPinnedPlace is not supported"));
-}
-
-template <>
 void set_constant_with_place<phi::IPUPlace>(const phi::DeviceContext& context,
                                             phi::DenseTensor* tensor,
                                             float value) {
@@ -184,16 +177,27 @@ void set_constant_with_place<phi::IPUPlace>(const phi::DeviceContext& context,
 template <>
 void set_constant_with_place<phi::CustomPlace>(
     const phi::DeviceContext& context, phi::DenseTensor* tensor, float value) {
-  phi::DenseTensor tmp_tensor;
-  tmp_tensor.Resize(tensor->dims());
-  context.HostAlloc(&tmp_tensor, tensor->dtype());
-  phi::VisitDataType(tmp_tensor.dtype(),
-                     TensorSetConstantCPU(&tmp_tensor, value));
-  phi::memory_utils::Copy(tensor->place(),
-                          tensor->data(),
-                          phi::CPUPlace(),
-                          tmp_tensor.data(),
-                          tensor->numel() * phi::SizeOf(tensor->dtype()));
+#ifdef PADDLE_WITH_CUSTOM_DEVICE
+  auto kernel_result = phi::KernelFactory::Instance().SelectKernelOrThrowError(
+      "full",
+      {paddle::experimental::ParseBackend(tensor->place()),
+       phi::DataLayout::ALL_LAYOUT,
+       paddle::experimental::ParseDataType(tensor->dtype())});
+  const auto& kernel = kernel_result.kernel;
+  using kernel_signature = void (*)(const phi::DeviceContext&,
+                                    const phi::IntArray&,
+                                    const phi::Scalar&,
+                                    DataType,
+                                    phi::DenseTensor*);
+  auto* kernel_fn = kernel.GetVariadicKernelFn<kernel_signature>();
+  (*kernel_fn)(context,
+               phi::IntArray(phi::vectorize(tensor->dims())),
+               phi::Scalar(value),
+               tensor->dtype(),
+               tensor);
+#else
+  PADDLE_THROW(phi::errors::Unimplemented("CustomPlace is not supported"));
+#endif
 }
 
 template <>
@@ -209,15 +213,16 @@ void set_constant_with_place<phi::GPUPinnedPlace>(
   phi::VisitDataType(tensor->dtype(), TensorSetConstantCPU(tensor, value));
 }
 
-struct TensorSetConstantWithPlace
-    : public std::unary_function<phi::Place, void> {
+struct TensorSetConstantWithPlace {
+  using argument_type = phi::Place;
+  using result_type = void;
   TensorSetConstantWithPlace(const phi::DeviceContext& context,
                              phi::DenseTensor* tensor,
                              float value)
       : context_(context), tensor_(tensor), value_(value) {}
 
   template <typename Place>
-  void operator()(Place place) const {
+  void operator()(Place place UNUSED) const {
     set_constant_with_place<Place>(context_, tensor_, value_);
   }
 
@@ -256,7 +261,7 @@ template struct RowwiseMean<phi::CPUContext, double>;
 
 template <typename T>
 struct RowwiseAdd<phi::CPUContext, T> {
-  void operator()(const phi::CPUContext& context,
+  void operator()(const phi::CPUContext& context UNUSED,
                   const phi::DenseTensor& input,
                   const phi::DenseTensor& vector,
                   phi::DenseTensor* output) {
@@ -272,16 +277,14 @@ struct RowwiseAdd<phi::CPUContext, T> {
             " Expected vector size=%d, but received %d",
             size,
             vector.numel()));
-    const char* in_dims_cstr = in_dims.to_str().c_str();
-    const char* out_dims_cstr = out_dims.to_str().c_str();
     PADDLE_ENFORCE_EQ(out_dims,
                       in_dims,
                       phi::errors::InvalidArgument(
                           "The output tensor shape should be same as the input"
                           " tensor shape. Expected output tensor shape: %s,"
                           " but received %s",
-                          in_dims_cstr,
-                          out_dims_cstr));
+                          in_dims.to_str().c_str(),
+                          out_dims.to_str().c_str()));
 
     auto in = phi::EigenMatrix<T>::From(input);
     auto vec = phi::EigenVector<T>::Flatten(vector);

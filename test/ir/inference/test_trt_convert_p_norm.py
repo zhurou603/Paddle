@@ -23,7 +23,7 @@ from trt_layer_auto_scan_test import TrtLayerAutoScanTest
 import paddle.inference as paddle_infer
 
 
-class TrtConvertCeluTest(TrtLayerAutoScanTest):
+class TrtConvertPNormTest(TrtLayerAutoScanTest):
     def sample_program_configs(self):
         def generate_input1(dims, attrs: List[Dict[str, Any]]):
             if dims == 1:
@@ -118,10 +118,12 @@ class TrtConvertCeluTest(TrtLayerAutoScanTest):
         # for dynamic_shape mode
         generate_dynamic_shape(attrs)
         self.trt_param.precision = paddle_infer.PrecisionType.Float32
+        program_config.set_input_type(np.float32)
         yield self.create_inference_config(), generate_trt_nodes_num(
             attrs, True
         ), 1e-5
         self.trt_param.precision = paddle_infer.PrecisionType.Half
+        program_config.set_input_type(np.float16)
         yield self.create_inference_config(), generate_trt_nodes_num(
             attrs, True
         ), (1e-3, 1e-3)

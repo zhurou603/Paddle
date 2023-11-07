@@ -46,9 +46,7 @@ def custom_relu_static(
     with static.scope_guard(static.Scope()):
         with static.program_guard(static.Program()):
             x = static.data(name='X', shape=[None, 8], dtype=dtype)
-            x.stop_gradient = False
             out = func(x) if use_func else paddle.nn.functional.relu(x)
-            static.append_backward(out)
 
             exe = static.Executor()
             exe.run(static.default_startup_program())
@@ -66,8 +64,8 @@ def custom_relu_static(
 class TestNewCustomOpXpuSetUpInstall(unittest.TestCase):
     def setUp(self):
         cur_dir = os.path.dirname(os.path.abspath(__file__))
-        cmd = 'cd {} && {} custom_relu_xpu_setup.py install'.format(
-            cur_dir, sys.executable
+        cmd = (
+            f'cd {cur_dir} && {sys.executable} custom_relu_xpu_setup.py install'
         )
         run_cmd(cmd)
 

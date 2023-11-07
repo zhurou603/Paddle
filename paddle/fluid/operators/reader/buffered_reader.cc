@@ -50,7 +50,7 @@ BufferedReader::BufferedReader(
   VLOG(1) << "BufferedReader";
 #if defined(PADDLE_WITH_CUDA) || defined(PADDLE_WITH_HIP)
   if (platform::is_gpu_place(place_) && !pin_memory) {
-    int dev_idx = place_.device;
+    int dev_idx = place_.device;  // NOLINT
     compute_stream_ =
         ((phi::GPUContext *)(platform::DeviceContextPool::Instance().Get(
              place_)))
@@ -98,7 +98,6 @@ BufferedReader::BufferedReader(
 
   cpu_buffer_.resize(buffer_size);
   cuda_buffer_.resize(buffer_size);
-  npu_buffer_.resize(buffer_size);
   xpu_buffer_.resize(buffer_size);
   custom_device_buffer_.resize(buffer_size);
   ReadTillBufferFullAsync();
@@ -214,10 +213,8 @@ void BufferedReader::ReadAsync(size_t i) {
           auto cpu_ptr = cpu[i].data();
           auto gpu_ptr = gpu_ptrs[i];
           auto size = cpu[i].numel() * phi::SizeOf(cpu[i].dtype());
-          if (platform::is_cuda_pinned_place(cpu_place)) {
-            memory::Copy(
-                place_, gpu_ptr, cpu_place, cpu_ptr, size, stream_.get());
-          } else if ((platform::is_gpu_place(cpu_place))) {
+          if (platform::is_cuda_pinned_place(cpu_place) ||
+              platform::is_gpu_place(cpu_place)) {
             memory::Copy(
                 place_, gpu_ptr, cpu_place, cpu_ptr, size, stream_.get());
           } else {
@@ -303,6 +300,8 @@ void BufferedReader::ReadAsync(size_t i) {
 
 #ifdef PADDLE_WITH_CUSTOM_DEVICE
     if (platform::is_custom_place(place_)) {
+      phi::DeviceManager::SetDevice(place_);
+
       TensorVec &custom_device = custom_device_buffer_[i];
       if (custom_device.empty()) {
         custom_device.resize(cpu.size());
@@ -326,7 +325,6 @@ void BufferedReader::ReadAsync(size_t i) {
             custom_device[i].mutable_data(place_, cpu[i].type()));
       }
 
-      phi::DeviceManager::SetDevice(place_);
       phi::DeviceManager::GetDeviceWithPlace(place_)->RecordEvent(
           custom_device_events_[i].get(), custom_device_compute_stream_.get());
       phi::DeviceManager::GetDeviceWithPlace(place_)->StreamWaitEvent(

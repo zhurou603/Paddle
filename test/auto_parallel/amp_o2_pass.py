@@ -59,8 +59,8 @@ def apply_pass(use_amp=False, amp_dtype="bfloat16"):
 
 
 def reset_prog():
-    paddle.fluid.framework.switch_main_program(paddle.static.Program())
-    paddle.fluid.framework.switch_startup_program(paddle.static.Program())
+    paddle.base.framework.switch_main_program(paddle.static.Program())
+    paddle.base.framework.switch_startup_program(paddle.static.Program())
 
 
 class TestShardingStage2WithNewEXE(unittest.TestCase):
@@ -74,7 +74,7 @@ class TestShardingStage2WithNewEXE(unittest.TestCase):
         paddle.seed(2022)
         np.random.seed(2022)
         random.seed(2022)
-        place = paddle.fluid.CUDAPlace(paddle.distributed.ParallelEnv().dev_id)
+        place = paddle.base.CUDAPlace(paddle.distributed.ParallelEnv().dev_id)
         engine._executor = paddle.static.Executor(place)
 
     def get_engine(self, use_amp=False, amp_dtype="bfloat16"):
@@ -120,7 +120,10 @@ class TestShardingStage2WithNewEXE(unittest.TestCase):
 
         # bf16
         mp_bf16_engine = self.get_engine(use_amp=True)
-        if not paddle.is_compiled_with_cuda() or get_cuda_version() < 11000:
+        if not (
+            paddle.amp.is_bfloat16_supported()
+            and paddle.device.cuda.get_device_capability()[0] >= 8
+        ):
             return
 
         mp_bf16_history = mp_bf16_engine.fit(

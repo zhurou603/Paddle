@@ -13,46 +13,23 @@
 # limitations under the License.
 
 import contextlib
-import struct
 import unittest
 
 import numpy as np
-from amp_base_models import AmpTestBase, build_add_model, build_embedding_model
+from amp_base_models import (
+    AmpTestBase,
+    build_add_model,
+    build_embedding_model,
+    convert_float_to_uint16,
+    convert_uint16_to_float,
+)
 
 import paddle
-from paddle import fluid
-from paddle.fluid import core
+from paddle import base
+from paddle.base import core
 from paddle.static import amp
 
 paddle.enable_static()
-
-
-def copy_bits_from_float_to_uint16(f):
-    return struct.unpack('<I', struct.pack('<f', f))[0] >> 16
-
-
-def convert_float_to_uint16(in_list):
-    if in_list.dtype == np.float32:
-        new_output = []
-        for x in np.nditer(in_list):
-            new_output.append(np.uint16(copy_bits_from_float_to_uint16(x)))
-        new_output = np.reshape(new_output, in_list.shape).view(np.uint16)
-        return new_output
-    else:
-        return in_list
-
-
-def convert_uint16_to_float(in_list):
-    if in_list.dtype == np.uint16:
-        in_list = np.asarray(in_list)
-        out = np.vectorize(
-            lambda x: struct.unpack('<f', struct.pack('<I', x << 16))[0],
-            otypes=[np.float32],
-        )(in_list.flat)
-        return np.reshape(out, in_list.shape)
-    else:
-        return in_list
-
 
 cutf = convert_uint16_to_float
 
@@ -78,23 +55,23 @@ class TestModelCastBF16(unittest.TestCase):
 
     @contextlib.contextmanager
     def scope_prog_guard(self):
-        prog = fluid.Program()
-        startup_prog = fluid.Program()
-        scope = fluid.core.Scope()
-        with fluid.scope_guard(scope):
-            with fluid.program_guard(prog, startup_prog):
+        prog = base.Program()
+        startup_prog = base.Program()
+        scope = base.core.Scope()
+        with base.scope_guard(scope):
+            with base.program_guard(prog, startup_prog):
                 yield
 
     def get_static_graph_result(
         self, feed, fetch_list, amp_fun, with_lod=False, startup_prog=None
     ):
-        exe = fluid.Executor(core.CPUPlace())
+        exe = base.Executor(core.CPUPlace())
         exe.run(
-            fluid.default_startup_program()
+            base.default_startup_program()
             if startup_prog is None
             else startup_prog
         )
-        prog = fluid.default_main_program()
+        prog = base.default_main_program()
         if amp_fun is not None:
             if startup_prog is not None:
                 amp_fun(prog, startup_prog)
@@ -216,7 +193,7 @@ class TestModelCastBF16(unittest.TestCase):
                 ),
                 use_bf16_guard=True,
             ),
-            startup_prog=fluid.default_startup_program(),
+            startup_prog=base.default_startup_program(),
         )
 
 
@@ -235,11 +212,11 @@ class TestProgramBF16(AmpTestBase):
         self.assertEqual(
             actual_num_mp,
             expected_num_mp,
-            f"The number of optimizers with multi_precison = True is expected to be {expected_num_mp}, but recieved {actual_num_mp}.",
+            f"The number of optimizers with multi_precison = True is expected to be {expected_num_mp}, but received {actual_num_mp}.",
         )
 
     def test_amp_bf16_o1(self):
-        main_program, startup_program = build_embedding_model(
+        main_program, startup_program, _, _, _ = build_embedding_model(
             True, "bfloat16", "O1"
         )
         self.assertEqual(main_program.num_blocks, 1)
@@ -258,25 +235,27 @@ class TestProgramBF16(AmpTestBase):
         self._check_op_calls(op_stats_list[0], expected_bf16_calls)
 
     def test_amp_bf16_o2(self):
-        main_program, startup_program = build_embedding_model(
+        main_program, startup_program, _, _, _ = build_embedding_model(
             True, "bfloat16", "O2"
         )
         self.assertEqual(main_program.num_blocks, 1)
 
         amp.debugging.collect_operator_stats(main_program)
         op_stats_list = amp.debugging._get_op_stats_list(main_program)
+        expected_fp32_calls = {"lookup_table_v2": 1}
         expected_bf16_calls = {
             "matmul_v2": 1,
             "elementwise_add": 1,
             "dropout": 1,
             "lookup_table_v2": 0,
-            "squared_l2_norm": 2,
-            "adamw": 2,
+            "squared_l2_norm": 3,
+            "adamw": 3,
         }
         self._check_optimizer(
             main_program,
             expected_bf16_calls["matmul_v2"]
-            + expected_bf16_calls["elementwise_add"],
+            + expected_bf16_calls["elementwise_add"]
+            + expected_fp32_calls["lookup_table_v2"],
         )
         self._check_op_calls(op_stats_list[0], expected_bf16_calls)
 
@@ -308,6 +287,7 @@ class TestStaticBF16(AmpTestBase):
                 exe,
                 x_np,
                 max_iters,
+                "bfloat16",
                 level,
             )
             return losses
@@ -318,6 +298,12 @@ class TestStaticBF16(AmpTestBase):
         exe = paddle.static.Executor(place)
         losses_o1 = _run(place, exe, x_fp32, max_iters, 'O1')
         losses_o2 = _run(place, exe, x_bf16, max_iters, 'O2')
+
+        self.assertEqual(
+            losses_o1,
+            losses_o2,
+            f"loss of o1 and o2 should be equal, but received loss o1: {losses_o1}, loss o2: {losses_o2}",
+        )
 
 
 if __name__ == '__main__':

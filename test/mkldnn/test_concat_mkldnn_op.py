@@ -15,10 +15,10 @@
 import unittest
 
 import numpy as np
+from op_test import OpTest
 
 from paddle import enable_static
-from paddle.fluid import core
-from paddle.fluid.tests.unittests.eager_op_test import OpTest
+from paddle.base import core
 
 
 class TestConcatAxis0OneDNNOp(OpTest):

@@ -47,6 +47,7 @@ limitations under the License. */
 #include "paddle/phi/core/kernel_factory.h"
 #include "paddle/phi/core/macros.h"
 #include "paddle/utils/flat_hash_map.h"
+#include "paddle/utils/test_macros.h"
 
 namespace paddle {
 namespace framework {
@@ -64,6 +65,8 @@ PHI_DECLARE_int32(inner_op_parallelism);
 
 namespace paddle {
 namespace framework {
+
+constexpr char kFakeVarName[] = "Fake_var";
 
 /// If a variable is a empty variable, that name will be used.
 constexpr char kEmptyVarName[] = "@EMPTY@";
@@ -230,6 +233,8 @@ class RuntimeInferShapeContext : public InferShapeContext {
 
   std::vector<DDim> GetOutputsDim(const std::string& name) const;
 
+  bool HasRuntimeAttributes() const;
+
  protected:
   DDim GetDim(Variable* var) const;
 
@@ -266,7 +271,7 @@ class RuntimeInferShapeContext : public InferShapeContext {
  * should always construct a proto message OpDesc and call
  * OpRegistry::CreateOp(op_desc) to get an Operator instance.
  */
-class OperatorBase {
+class TEST_API OperatorBase {
  public:
   OperatorBase(const std::string& type,
                const VariableNameMap& inputs,
@@ -288,6 +293,7 @@ class OperatorBase {
 
   virtual bool SupportGPU() const { return false; }
   virtual bool SupportXPU() const { return false; }
+  virtual bool SupportCustomDevice() const { return false; }
 
   const std::string& Type() const { return type_; }
 
@@ -370,6 +376,11 @@ class OperatorBase {
 
   void SetId(uint64_t id) { id_ = id; }
 
+  using HookFunc = std::function<void(OperatorBase*, Scope*)>;
+  void SetOutputHooks(const std::vector<HookFunc>& hookfuncs) {
+    hookfuncs_ = hookfuncs;
+  }
+
  protected:
   std::string type_;
   // NOTE: in case of OpGrad, inputs_ contains:
@@ -397,6 +408,8 @@ class OperatorBase {
 
   // Whether this operator executes in an Executor.
   bool run_by_executor_{true};
+
+  std::vector<HookFunc> hookfuncs_;
 
  private:
   void GenerateTemporaryNames();
@@ -747,6 +760,8 @@ class OperatorWithKernel : public OperatorBase {
   bool SupportGPU() const override;
 
   bool SupportXPU() const override;
+
+  bool SupportCustomDevice() const override;
 
   bool SupportsMKLDNN(phi::DataType data_type) const;
 

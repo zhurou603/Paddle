@@ -22,6 +22,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from distutils.spawn import find_executable
 from subprocess import CalledProcessError
@@ -48,8 +49,7 @@ else:
             sys.version_info.minor
         ):
             raise RuntimeError(
-                "You set PY_VERSION=%s, but your current python environment is %s, you should keep them consistent!"
-                % (
+                "You set PY_VERSION={}, but your current python environment is {}, you should keep them consistent!".format(
                     os.getenv("PY_VERSION"),
                     str(sys.version_info.major)
                     + '.'
@@ -204,7 +204,6 @@ class InstallHeaders(Command):
 
 class InstallCommand(InstallCommandBase):
     def finalize_options(self):
-
         ret = InstallCommandBase.finalize_options(self)
         self.install_lib = self.install_platlib
         print("install_lib:", self.install_platlib)
@@ -220,10 +219,10 @@ class DevelopCommand(DevelopCommandBase):
     def run(self):
         # copy proto and .so to python_source_dir
         fluid_proto_binary_path = (
-            paddle_binary_dir + '/python/paddle/fluid/proto/'
+            paddle_binary_dir + '/python/paddle/base/proto/'
         )
         fluid_proto_source_path = (
-            paddle_source_dir + '/python/paddle/fluid/proto/'
+            paddle_source_dir + '/python/paddle/base/proto/'
         )
         distributed_proto_binary_path = (
             paddle_binary_dir + '/python/paddle/distributed/fleet/proto/'
@@ -238,8 +237,8 @@ class DevelopCommand(DevelopCommandBase):
             distributed_proto_binary_path, distributed_proto_source_path
         )
         shutil.copy(
-            paddle_binary_dir + '/python/paddle/fluid/libpaddle.so',
-            paddle_source_dir + '/python/paddle/fluid/',
+            paddle_binary_dir + '/python/paddle/base/libpaddle.so',
+            paddle_source_dir + '/python/paddle/base/',
         )
         dynamic_library_binary_path = paddle_binary_dir + '/python/paddle/libs/'
         dynamic_library_source_path = paddle_source_dir + '/python/paddle/libs/'
@@ -250,9 +249,7 @@ class DevelopCommand(DevelopCommandBase):
             )
         # write version.py and cuda_env_config_py to python_source_dir
         write_version_py(
-            filename='{}/python/paddle/version/__init__.py'.format(
-                paddle_source_dir
-            )
+            filename=f'{paddle_source_dir}/python/paddle/version/__init__.py'
         )
         write_cuda_env_config_py(
             filename=f'{paddle_source_dir}/python/paddle/cuda_env.py'
@@ -430,52 +427,7 @@ def is_taged():
 def get_cinn_version():
     if env_dict.get("WITH_CINN") != 'ON':
         return "False"
-
-    cinn_git_version = 'Unknown'
-    # try get cinn tag name
-    try:
-        cmd = [
-            'git',
-            'describe',
-            '--exact-match',
-            '--tags',
-            'HEAD',
-            '2>/dev/null',
-        ]
-        cinn_tag = (
-            subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                cwd=env_dict.get("CINN_SOURCE_DIR"),
-            )
-            .communicate()[0]
-            .strip()
-        )
-        if len(cinn_tag) > 0:
-            cinn_git_version = cinn_tag
-    except:
-        pass
-
-    if cinn_git_version == 'Unknown':
-        # try get cinn commit id
-        try:
-            cmd = ['git', 'rev-parse', 'HEAD']
-            cinn_commit = (
-                subprocess.Popen(
-                    cmd,
-                    stdout=subprocess.PIPE,
-                    cwd=env_dict.get("CINN_SOURCE_DIR"),
-                )
-                .communicate()[0]
-                .strip()
-            )
-            if len(cinn_commit) > 0:
-                cinn_git_version = cinn_commit
-        except:
-            pass
-
-    cinn_git_version = cinn_git_version.decode('utf-8')
-    return str(cinn_git_version)
+    return "0.3.0"
 
 
 def write_version_py(filename='paddle/version/__init__.py'):
@@ -527,29 +479,33 @@ def show():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            # Case 1: paddle is tagged with 2.2.0
-            paddle.version.show()
-            # full_version: 2.2.0
-            # major: 2
-            # minor: 2
-            # patch: 0
-            # rc: 0
-            # cuda: '10.2'
-            # cudnn: '7.6.5'
-            # xpu: '20230114'
-            # xpu_xccl: '1.0.7'
-            # cinn: False
+            >>> # Case 1: paddle is tagged with 2.2.0
+            >>> paddle.version.show()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            full_version: 2.2.0
+            major: 2
+            minor: 2
+            patch: 0
+            rc: 0
+            cuda: '10.2'
+            cudnn: '7.6.5'
+            xpu: '20230114'
+            xpu_xccl: '1.0.7'
+            cinn: False
+            >>> # doctest: -SKIP
 
-            # Case 2: paddle is not tagged
-            paddle.version.show()
-            # commit: cfa357e984bfd2ffa16820e354020529df434f7d
-            # cuda: '10.2'
-            # cudnn: '7.6.5'
-            # xpu: '20230114'
-            # xpu_xccl: '1.0.7'
-            # cinn: False
+            >>> # Case 2: paddle is not tagged
+            >>> paddle.version.show()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            commit: cfa357e984bfd2ffa16820e354020529df434f7d
+            cuda: '10.2'
+            cudnn: '7.6.5'
+            xpu: '20230114'
+            xpu_xccl: '1.0.7'
+            cinn: False
+            >>> # doctest: -SKIP
     """
     if istaged:
         print('full_version:', full_version)
@@ -577,10 +533,11 @@ def cuda():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            paddle.version.cuda()
-            # '10.2'
+            >>> paddle.version.cuda()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            '10.2'
 
     """
     return cuda_version
@@ -594,10 +551,11 @@ def cudnn():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            paddle.version.cudnn()
-            # '7.6.5'
+            >>> paddle.version.cudnn()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            '7.6.5'
 
     """
     return cudnn_version
@@ -611,10 +569,11 @@ def xpu():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            paddle.version.xpu()
-            # '20230114'
+            >>> paddle.version.xpu()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            '20230114'
 
     """
     return xpu_version
@@ -628,10 +587,11 @@ def xpu_xccl():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            paddle.version.xpu_xccl()
-            # '1.0.7'
+            >>> paddle.version.xpu_xccl()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            '1.0.7'
 
     """
     return xpu_xccl_version
@@ -645,10 +605,11 @@ def cinn():
     Examples:
         .. code-block:: python
 
-            import paddle
+            >>> import paddle
 
-            paddle.version.cinn()
-            # False
+            >>> paddle.version.cinn()
+            >>> # doctest: +SKIP('Different environments yield different output.')
+            False
 
     """
     return cinn_version
@@ -801,7 +762,6 @@ def cmake_run(build_path):
                 "MSVC_STATIC_CRT",
                 "NEW_RELEASE_ALL",
                 "GENERATOR",
-                "CINN_GIT_TAG",
             )
         }
     )
@@ -938,16 +898,16 @@ def get_setup_requires():
 def get_package_data_and_package_dir():
     if os.name != 'nt':
         package_data = {
-            'paddle.fluid': [env_dict.get("FLUID_CORE_NAME") + '.so']
+            'paddle.base': [env_dict.get("FLUID_CORE_NAME") + '.so']
         }
     else:
         package_data = {
-            'paddle.fluid': [
+            'paddle.base': [
                 env_dict.get("FLUID_CORE_NAME") + '.pyd',
                 env_dict.get("FLUID_CORE_NAME") + '.lib',
             ]
         }
-    package_data['paddle.fluid'] += [
+    package_data['paddle.base'] += [
         paddle_binary_dir + '/python/paddle/cost_model/static_op_benchmark.json'
     ]
     if 'develop' in sys.argv:
@@ -955,17 +915,30 @@ def get_package_data_and_package_dir():
     else:
         package_dir = {
             '': env_dict.get("PADDLE_BINARY_DIR") + '/python',
-            'paddle.fluid.proto.profiler': env_dict.get("PADDLE_BINARY_DIR")
+            'paddle.base.proto.profiler': env_dict.get("PADDLE_BINARY_DIR")
             + '/paddle/fluid/platform',
-            'paddle.fluid.proto': env_dict.get("PADDLE_BINARY_DIR")
+            'paddle.base.proto': env_dict.get("PADDLE_BINARY_DIR")
             + '/paddle/fluid/framework',
-            'paddle.fluid': env_dict.get("PADDLE_BINARY_DIR")
-            + '/python/paddle/fluid',
+            'paddle.base': env_dict.get("PADDLE_BINARY_DIR")
+            + '/python/paddle/base',
         }
     # put all thirdparty libraries in paddle.libs
     libs_path = paddle_binary_dir + '/python/paddle/libs'
     package_data['paddle.libs'] = []
-    package_data['paddle.libs'] = [
+
+    if env_dict.get("WITH_SHARED_PHI") == "ON":
+        package_data['paddle.libs'] += [
+            ('libphi' if os.name != 'nt' else 'phi') + ext_suffix
+        ]
+        shutil.copy(env_dict.get("PHI_LIB"), libs_path)
+
+    if env_dict.get("WITH_SHARED_IR") == "ON":
+        package_data['paddle.libs'] += [
+            ('libpir' if os.name != 'nt' else 'pir') + ext_suffix
+        ]
+        shutil.copy(env_dict.get("IR_LIB"), libs_path)
+
+    package_data['paddle.libs'] += [
         ('libwarpctc' if os.name != 'nt' else 'warpctc') + ext_suffix,
         ('libwarprnnt' if os.name != 'nt' else 'warprnnt') + ext_suffix,
     ]
@@ -1058,18 +1031,26 @@ def get_package_data_and_package_dir():
         )
         shutil.copy(
             env_dict.get("CINN_INCLUDE_DIR")
-            + '/cinn/runtime/cuda/cinn_cuda_runtime_source.cuh',
+            + '/paddle/cinn/runtime/cuda/cinn_cuda_runtime_source.cuh',
             libs_path,
         )
         package_data['paddle.libs'] += ['libcinnapi.so']
         package_data['paddle.libs'] += ['cinn_cuda_runtime_source.cuh']
 
         cinn_fp16_file = (
-            env_dict.get("CINN_INCLUDE_DIR") + '/cinn/runtime/cuda/float16.h'
+            env_dict.get("CINN_INCLUDE_DIR")
+            + '/paddle/cinn/runtime/cuda/float16.h'
         )
         if os.path.exists(cinn_fp16_file):
             shutil.copy(cinn_fp16_file, libs_path)
             package_data['paddle.libs'] += ['float16.h']
+        cinn_bf16_file = (
+            env_dict.get("CINN_INCLUDE_DIR")
+            + '/paddle/cinn/runtime/cuda/bfloat16.h'
+        )
+        if os.path.exists(cinn_bf16_file):
+            shutil.copy(cinn_bf16_file, libs_path)
+            package_data['paddle.libs'] += ['bfloat16.h']
 
         if env_dict.get("CMAKE_BUILD_TYPE") == 'Release' and os.name != 'nt':
             command = (
@@ -1114,13 +1095,7 @@ def get_package_data_and_package_dir():
                 )
         shutil.copy(env_dict.get("MKLDNN_SHARED_LIB"), libs_path)
         if os.name != 'nt':
-            shutil.copy(env_dict.get("MKLDNN_SHARED_LIB_1"), libs_path)
-            shutil.copy(env_dict.get("MKLDNN_SHARED_LIB_2"), libs_path)
-            package_data['paddle.libs'] += [
-                'libmkldnn.so.0',
-                'libdnnl.so.1',
-                'libdnnl.so.2',
-            ]
+            package_data['paddle.libs'] += ['libdnnl.so.3']
         else:
             package_data['paddle.libs'] += ['mkldnn.dll']
 
@@ -1170,6 +1145,11 @@ def get_package_data_and_package_dir():
     if env_dict.get("WITH_XPU_XFT") == 'ON':
         shutil.copy(env_dict.get("XPU_XFT_LIB"), libs_path)
         package_data['paddle.libs'] += [env_dict.get("XPU_XFT_LIB_NAME")]
+
+    if env_dict.get("WITH_XPTI") == 'ON':
+        shutil.copy(env_dict.get("XPU_XPTI_LIB"), libs_path)
+        package_data['paddle.libs'] += [env_dict.get("XPU_XPTI_LIB_NAME")]
+
     # remove unused paddle/libs/__init__.py
     if os.path.isfile(libs_path + '/__init__.py'):
         os.remove(libs_path + '/__init__.py')
@@ -1177,7 +1157,7 @@ def get_package_data_and_package_dir():
 
     # change rpath of ${FLUID_CORE_NAME}.ext, add $ORIGIN/../libs/ to it.
     # The reason is that libwarpctc.ext, libwarprnnt.ext, libiomp5.ext etc are in paddle.libs, and
-    # ${FLUID_CORE_NAME}.ext is in paddle.fluid, thus paddle/fluid/../libs will pointer to above libraries.
+    # ${FLUID_CORE_NAME}.ext is in paddle.base, thus paddle/fluid/../libs will pointer to above libraries.
     # This operation will fix https://github.com/PaddlePaddle/Paddle/issues/3213
     if env_dict.get("CMAKE_BUILD_TYPE") == 'Release':
         if os.name != 'nt':
@@ -1186,25 +1166,53 @@ def get_package_data_and_package_dir():
                 commands = [
                     "install_name_tool -id '@loader_path/../libs/' "
                     + env_dict.get("PADDLE_BINARY_DIR")
-                    + '/python/paddle/fluid/'
+                    + '/python/paddle/base/'
                     + env_dict.get("FLUID_CORE_NAME")
                     + '.so'
                 ]
                 commands.append(
                     "install_name_tool -add_rpath '@loader_path/../libs/' "
                     + env_dict.get("PADDLE_BINARY_DIR")
-                    + '/python/paddle/fluid/'
+                    + '/python/paddle/base/'
                     + env_dict.get("FLUID_CORE_NAME")
                     + '.so'
                 )
+                if env_dict.get("WITH_SHARED_PHI") == "ON":
+                    commands.append(
+                        "install_name_tool -add_rpath '@loader_path' "
+                        + env_dict.get("PADDLE_BINARY_DIR")
+                        + '/python/paddle/libs/'
+                        + env_dict.get("PHI_NAME")
+                    )
+                if env_dict.get("WITH_SHARED_IR") == "ON":
+                    commands.append(
+                        "install_name_tool -add_rpath '@loader_path' "
+                        + env_dict.get("PADDLE_BINARY_DIR")
+                        + '/python/paddle/libs/'
+                        + env_dict.get("IR_NAME")
+                    )
             else:
                 commands = [
                     "patchelf --set-rpath '$ORIGIN/../libs/' "
                     + env_dict.get("PADDLE_BINARY_DIR")
-                    + '/python/paddle/fluid/'
+                    + '/python/paddle/base/'
                     + env_dict.get("FLUID_CORE_NAME")
                     + '.so'
                 ]
+                if env_dict.get("WITH_SHARED_PHI") == "ON":
+                    commands.append(
+                        "patchelf --set-rpath '$ORIGIN' "
+                        + env_dict.get("PADDLE_BINARY_DIR")
+                        + '/python/paddle/libs/'
+                        + env_dict.get("PHI_NAME")
+                    )
+                if env_dict.get("WITH_SHARED_IR") == "ON":
+                    commands.append(
+                        "patchelf --set-rpath '$ORIGIN' "
+                        + env_dict.get("PADDLE_BINARY_DIR")
+                        + '/python/paddle/libs/'
+                        + env_dict.get("IR_NAME")
+                    )
             # The sw_64 not suppot patchelf, so we just disable that.
             if platform.machine() != 'sw_64' and platform.machine() != 'mips64':
                 for command in commands:
@@ -1376,6 +1384,7 @@ def get_setup_parameters():
         'paddle.distributed.utils',
         'paddle.distributed.sharding',
         'paddle.distributed.fleet',
+        'paddle.distributed.auto_tuner',
         'paddle.distributed.launch',
         'paddle.distributed.launch.context',
         'paddle.distributed.launch.controllers',
@@ -1402,9 +1411,11 @@ def get_setup_parameters():
         'paddle.distributed.fleet.meta_parallel.sharding',
         'paddle.distributed.fleet.meta_parallel.parallel_layers',
         'paddle.distributed.auto_parallel',
-        'paddle.distributed.auto_parallel.operators',
-        'paddle.distributed.auto_parallel.tuner',
-        'paddle.distributed.auto_parallel.cost',
+        'paddle.distributed.auto_parallel.dygraph',
+        'paddle.distributed.auto_parallel.static',
+        'paddle.distributed.auto_parallel.static.operators',
+        'paddle.distributed.auto_parallel.static.tuner',
+        'paddle.distributed.auto_parallel.static.cost',
         'paddle.distributed.passes',
         'paddle.distributed.models',
         'paddle.distributed.models.moe',
@@ -1413,20 +1424,25 @@ def get_setup_parameters():
         'paddle.framework',
         'paddle.jit',
         'paddle.jit.dy2static',
+        'paddle.jit.pir_dy2static',
+        'paddle.jit.sot',
+        'paddle.jit.sot.opcode_translator',
+        'paddle.jit.sot.opcode_translator.executor',
+        'paddle.jit.sot.opcode_translator.executor.variables',
+        'paddle.jit.sot.opcode_translator.instruction_utils',
+        'paddle.jit.sot.symbolic',
+        'paddle.jit.sot.utils',
         'paddle.inference',
         'paddle.inference.contrib',
         'paddle.inference.contrib.utils',
-        'paddle.fluid',
-        'paddle.fluid.dygraph',
-        'paddle.fluid.proto',
-        'paddle.fluid.proto.profiler',
-        'paddle.fluid.layers',
-        'paddle.fluid.dataloader',
-        'paddle.fluid.contrib',
-        'paddle.fluid.contrib.extend_optimizer',
-        'paddle.fluid.incubate',
+        'paddle.base',
+        'paddle.base.dygraph',
+        'paddle.base.proto',
+        'paddle.base.proto.profiler',
+        'paddle.base.layers',
+        'paddle.base.incubate',
         'paddle.incubate.distributed.fleet',
-        'paddle.fluid.incubate.checkpoint',
+        'paddle.base.incubate.checkpoint',
         'paddle.amp',
         'paddle.cost_model',
         'paddle.hapi',
@@ -1468,6 +1484,7 @@ def get_setup_parameters():
         'paddle.sparse.nn.functional',
         'paddle.incubate.xpu',
         'paddle.io',
+        'paddle.io.dataloader',
         'paddle.optimizer',
         'paddle.nn',
         'paddle.nn.functional',
@@ -1495,6 +1512,8 @@ def get_setup_parameters():
         'paddle.geometric',
         'paddle.geometric.message_passing',
         'paddle.geometric.sampling',
+        'paddle.pir',
+        'paddle.decomposition',
     ]
 
     paddle_bins = ''
@@ -1516,7 +1535,6 @@ def get_setup_parameters():
 
 
 def check_build_dependency():
-
     missing_modules = '''Missing build dependency: {dependency}
 Please run 'pip install -r python/requirements.txt' to make sure you have all the dependencies installed.
 '''.strip()
@@ -1591,13 +1609,48 @@ def install_cpp_dist_and_build_test(install_dir, lib_test_dir, headers, libs):
     subprocess.check_call([CMAKE, "--build", lib_test_dir])
 
 
+def check_submodules():
+    def get_submodule_folder():
+        git_submodules_path = os.path.join(TOP_DIR, ".gitmodules")
+        with open(git_submodules_path) as f:
+            return [
+                os.path.join(TOP_DIR, line.split("=", 1)[1].strip())
+                for line in f.readlines()
+                if line.strip().startswith("path")
+            ]
+
+    def submodules_not_exists_or_empty(folder):
+        return not os.path.exists(folder) or (
+            os.path.isdir(folder) and len(os.listdir(folder)) == 0
+        )
+
+    submodule_folders = get_submodule_folder()
+    # f none of the submodule folders exists, try to initialize them
+    if any(
+        submodules_not_exists_or_empty(folder) for folder in submodule_folders
+    ):
+        try:
+            print(' --- Trying to initialize submodules')
+            start = time.time()
+            subprocess.check_call(
+                ["git", "submodule", "update", "--init", "--recursive"],
+                cwd=TOP_DIR,
+            )
+            end = time.time()
+            print(f' --- Submodule initialization took {end - start:.2f} sec')
+        except Exception:
+            print(' --- Submodule initalization failed')
+            print('Please run:\n\tgit submodule update --init --recursive')
+            sys.exit(1)
+
+
 def main():
     # Parse the command line and check arguments before we proceed with building steps and setup
     parse_input_command(filter_args_list)
 
     # check build dependency
     check_build_dependency()
-
+    check_submodules()
     # Execute the build process,cmake and make
     if cmake_and_build:
         build_steps()
@@ -1614,7 +1667,7 @@ def main():
     sys.path.insert(1, env_dict_path)
     from env_dict import env_dict
 
-    global env_dict
+    global env_dict  # noqa: F811
     global paddle_binary_dir, paddle_source_dir
 
     paddle_binary_dir = env_dict.get("PADDLE_BINARY_DIR")
@@ -1625,9 +1678,7 @@ def main():
     package_name = env_dict.get("PACKAGE_NAME")
 
     write_version_py(
-        filename='{}/python/paddle/version/__init__.py'.format(
-            paddle_binary_dir
-        )
+        filename=f'{paddle_binary_dir}/python/paddle/version/__init__.py'
     )
     write_cuda_env_config_py(
         filename=f'{paddle_binary_dir}/python/paddle/cuda_env.py'

@@ -15,6 +15,11 @@
 import unittest
 
 import numpy as np
+from dygraph_to_static_utils_new import (
+    Dy2StTestBase,
+    test_ast_only,
+    test_legacy_and_pir,
+)
 
 import paddle
 
@@ -23,6 +28,11 @@ class CallNotExist(paddle.nn.Layer):
     def __call__(self):
         # call a non-exist API to trigger exception
         return paddle.nn.not_exist_api
+
+
+class CallableList(list):
+    def __call__(self, x):
+        return x
 
 
 class ForwardNotExist(paddle.nn.Layer):
@@ -34,7 +44,9 @@ net = ForwardNotExist()
 net.forward = "A string so that convert forward will fail"
 
 
-class TestConvertCall(unittest.TestCase):
+class TestConvertCall(Dy2StTestBase):
+    # fallback mode will raise a InnerError, it's ok.
+    @test_ast_only
     def test_class_exception(self):
         @paddle.jit.to_static
         def call_not_exist():
@@ -51,8 +63,16 @@ class TestConvertCall(unittest.TestCase):
         with self.assertRaises(AttributeError):
             forward_not_exist()
 
+    def test_callable_list(self):
+        @paddle.jit.to_static
+        def callable_list(x, y):
+            callable_list = CallableList()
+            return callable_list(x) + y
 
-class TestConvertShapeCompare(unittest.TestCase):
+        self.assertEqual(callable_list(1, 2), 3)
+
+
+class TestConvertShapeCompare(Dy2StTestBase):
     def test_non_variable(self):
         self.assertEqual(
             paddle.jit.dy2static.convert_shape_compare(1, "<", 2), True
@@ -114,6 +134,7 @@ class TestConvertShapeCompare(unittest.TestCase):
             False,
         )
 
+    @test_legacy_and_pir
     def test_variable(self):
         paddle.enable_static()
         with paddle.static.program_guard(
@@ -187,7 +208,8 @@ class ShapeLayer(paddle.nn.Layer):
         return out
 
 
-class TestChooseShapeAttrOrApiWithLayer(unittest.TestCase):
+class TestChooseShapeAttrOrApiWithLayer(Dy2StTestBase):
+    @test_legacy_and_pir
     def test_tensor_shape(self):
         x = paddle.zeros(shape=[4, 1], dtype='float32')
         net = ShapeLayer()
@@ -196,7 +218,8 @@ class TestChooseShapeAttrOrApiWithLayer(unittest.TestCase):
         np.testing.assert_array_equal(out.numpy(), x.numpy())
 
 
-class TestIfElseNoValue(unittest.TestCase):
+class TestIfElseNoValue(Dy2StTestBase):
+    @test_legacy_and_pir
     def test_else_ret_none(self):
         input_x = paddle.to_tensor([[1, 2, 3], [4, 5, 6]])
 
@@ -226,6 +249,7 @@ class TestIfElseNoValue(unittest.TestCase):
         out = without_common_value(input_x, False)
         self.assertIsNone(out)
 
+    @test_legacy_and_pir
     def test_else_ret_c(self):
         input_x = paddle.to_tensor([[1, 2, 3], [4, 5, 6]])
 
@@ -258,6 +282,7 @@ class TestIfElseNoValue(unittest.TestCase):
         self.assertListEqual(paddle.tolist(y), paddle.tolist(input_x + 1))
         self.assertListEqual(paddle.tolist(z), paddle.tolist(input_x + 2))
 
+    @test_legacy_and_pir
     def test_else_ret_cz(self):
         input_x = paddle.to_tensor([[1, 2, 3], [4, 5, 6]])
 

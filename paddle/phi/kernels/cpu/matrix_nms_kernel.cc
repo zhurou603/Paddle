@@ -73,7 +73,7 @@ struct decay_score<T, true> {
 
 template <typename T>
 struct decay_score<T, false> {
-  T operator()(T iou, T max_iou, T sigma) {
+  T operator()(T iou, T max_iou, T sigma UNUSED) {
     return (1. - iou) / (1. - max_iou);
   }
 };
@@ -219,7 +219,7 @@ size_t MultiClassMatrixNMS(const DenseTensor& scores,
   std::iota(perm.begin(), perm.end(), 0);
 
   std::partial_sort(perm.begin(),
-                    perm.begin() + num_det,
+                    perm.begin() + num_det,  // NOLINT
                     perm.end(),
                     [&all_scores](int lhs, int rhs) {
                       return all_scores[lhs] > all_scores[rhs];
@@ -295,7 +295,7 @@ void MatrixNMSKernel(const Context& ctx,
     num_per_batch.emplace_back(num_out);
   }
 
-  int64_t num_kept = offsets.back();
+  int64_t num_kept = static_cast<int64_t>(offsets.back());
   if (num_kept == 0) {
     out->Resize(phi::make_ddim({0, out_dim}));
     ctx.template Alloc<T>(out);

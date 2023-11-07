@@ -110,7 +110,7 @@ class RNNDescriptors {
       dropout_state->Resize({static_cast<int64_t>(state_size)});
       dev_ctx.template Alloc<uint8_t>(dropout_state);
     }
-    dropout_desc_.descriptor(handle,
+    dropout_desc_.descriptor(handle,  // NOLINT
                              dev_ctx.GetPlace(),
                              is_initialized,
                              dropout_prob_,
@@ -277,7 +277,7 @@ bool IsContinuous(const Type &weight_list) {
 }
 
 template <typename T>
-void WeightToTensor(const Place &place,
+void WeightToTensor(const Place &place UNUSED,
                     gpuStream_t stream,
                     const std::vector<const DenseTensor *> &weight_list,
                     DenseTensor *weight) {

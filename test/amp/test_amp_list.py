@@ -15,10 +15,15 @@
 import unittest
 
 import paddle
-from paddle.fluid import core
+from paddle.base import core
 from paddle.static.amp import AutoMixedPrecisionLists, fp16_lists
 
 
+@unittest.skipIf(
+    not core.is_compiled_with_cuda()
+    or paddle.device.cuda.get_device_capability()[0] < 7.0,
+    "run test when gpu's compute capability is at least 7.0.",
+)
 class TestAMPList(unittest.TestCase):
     def setUp(self):
         self.default_black_list = [
@@ -50,9 +55,10 @@ class TestAMPList(unittest.TestCase):
         self.check_if_op_not_in_list(
             self.custom_white_list, amp_list.black_list
         )
-        self.check_if_op_not_in_list(
-            self.custom_white_list, amp_list.unsupported_list
-        )
+        if paddle.amp.is_float16_supported():
+            self.check_if_op_not_in_list(
+                self.custom_white_list, amp_list.black_list
+            )
 
     def test_eager(self):
         if not paddle.amp.is_float16_supported():

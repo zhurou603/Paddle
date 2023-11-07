@@ -14,12 +14,12 @@
 
 import unittest
 
-import config
 import mock_data as mock
 import numpy as np
 import parameterize as param
 import scipy.special
 import scipy.stats
+from distribution import config
 
 import paddle
 from paddle.distribution import kl
@@ -52,7 +52,7 @@ class TestKLBetaBeta(unittest.TestCase):
         )
 
     def test_kl_divergence(self):
-        with paddle.fluid.dygraph.guard(self.place):
+        with paddle.base.dygraph.guard(self.place):
             np.testing.assert_allclose(
                 paddle.distribution.kl_divergence(self.p, self.q),
                 self.scipy_kl_beta_beta(self.a1, self.b1, self.a2, self.b2),
@@ -87,7 +87,7 @@ class TestKLDirichletDirichlet(unittest.TestCase):
         self.q = paddle.distribution.Dirichlet(paddle.to_tensor(self.conc2))
 
     def test_kl_divergence(self):
-        with paddle.fluid.dygraph.guard(self.place):
+        with paddle.base.dygraph.guard(self.place):
             np.testing.assert_allclose(
                 paddle.distribution.kl_divergence(self.p, self.q),
                 self.scipy_kl_diric_diric(self.conc1, self.conc2),

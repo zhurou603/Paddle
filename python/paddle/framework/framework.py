@@ -16,7 +16,7 @@
 import numpy as np
 
 # TODO: define framework api
-from paddle.fluid.layer_helper_base import LayerHelperBase
+from paddle.base.layer_helper_base import LayerHelperBase
 
 __all__ = []
 
@@ -35,12 +35,12 @@ def set_default_dtype(d):
     Examples:
         .. code-block:: python
 
-            import paddle
-            paddle.set_default_dtype("float32")
+            >>> import paddle
+            >>> paddle.set_default_dtype("float32")
 
     """
     if isinstance(d, type):
-        # This branch is for NumPy scalar types
+        # This branch is for np.dtype
         if d in [np.float16, np.float32, np.float64]:
             d = d.__name__
         else:
@@ -49,7 +49,7 @@ def set_default_dtype(d):
                 ", but received %s" % d.__name__
             )
     else:
-        # This branch is for np.dtype and str
+        # This branch is for str
         if d in ['float16', 'float32', 'float64', 'bfloat16']:
             # NOTE(SigureMo): Since the np.dtype object is not an instance of
             # type, so it will not be handled by the previous branch. We need
@@ -76,7 +76,7 @@ def get_default_dtype():
     Examples:
         .. code-block:: python
 
-            import paddle
-            paddle.get_default_dtype()
+            >>> import paddle
+            >>> paddle.get_default_dtype()
     """
     return LayerHelperBase.get_default_dtype()

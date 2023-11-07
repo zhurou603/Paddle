@@ -1,3 +1,4 @@
+remove_definitions(-DPADDLE_DLL_EXPORT)
 set(CC_TESTS_DIR
     ${PADDLE_BINARY_DIR}/test/cpp
     CACHE INTERNAL "c++ tests directory")
@@ -91,6 +92,18 @@ function(bash_test_modules TARGET_NAME)
 endfunction()
 
 if(WITH_TESTING)
+  if(WITH_CINN)
+    add_subdirectory(cpp/cinn)
+    add_subdirectory(cinn)
+  endif()
+  if(CINN_ONLY)
+    return()
+  endif()
+  # The following unittests only run in PR-CI-CINN
+  if(WITH_CINN AND NOT CINN_ONMLY)
+    add_subdirectory(ir/pir/cinn)
+  endif()
+
   add_subdirectory(amp)
   add_subdirectory(asp)
   add_subdirectory(autograd)
@@ -102,6 +115,7 @@ if(WITH_TESTING)
   add_subdirectory(custom_op)
   add_subdirectory(custom_runtime)
   add_subdirectory(dataset)
+  add_subdirectory(cpp_extension)
   if(WITH_DISTRIBUTE)
     add_subdirectory(collective)
     add_subdirectory(auto_parallel)
@@ -118,6 +132,7 @@ if(WITH_TESTING)
     add_subdirectory(ipu)
   endif()
   add_subdirectory(ir)
+  add_subdirectory(indexing)
   add_subdirectory(legacy_test)
   if(WITH_MKLDNN)
     add_subdirectory(mkldnn)
@@ -127,6 +142,7 @@ if(WITH_TESTING)
   add_subdirectory(rnn)
   add_subdirectory(rpc)
   add_subdirectory(sequence)
+  add_subdirectory(sot)
   add_subdirectory(standalone_executor)
   add_subdirectory(tokenizer)
   # add_subdirectory(white_list)
@@ -167,6 +183,12 @@ if(${len} GREATER_EQUAL 1)
       add_executable(${test_name} ${test_src})
       target_link_libraries(${test_name} paddle_gtest_main_new)
       target_link_libraries(${test_name} $<TARGET_LINKER_FILE:${paddle_lib}>)
+      if(WITH_SHARED_PHI)
+        target_link_libraries(${test_name} $<TARGET_LINKER_FILE:phi>)
+      endif()
+      if(WITH_SHARED_IR)
+        target_link_libraries(${test_name} $<TARGET_LINKER_FILE:pir>)
+      endif()
       add_dependencies(${test_name} ${paddle_lib} paddle_gtest_main_new)
       if(WITH_GPU)
         target_link_libraries(${test_name} ${CUDA_CUDART_LIBRARY}
@@ -176,33 +198,28 @@ if(${len} GREATER_EQUAL 1)
         target_link_libraries(${test_name} ${ROCM_HIPRTC_LIB})
       endif()
       if(APPLE)
-        target_link_libraries(${test_name}
-                              "-Wl,-rpath,$<TARGET_FILE_DIR:${paddle_lib}>")
+        target_link_libraries(
+          ${test_name}
+          "-Wl,-rpath,$<TARGET_FILE_DIR:${paddle_lib}> -Wl,-rpath,$<TARGET_FILE_DIR:phi> -Wl,-rpath,$<TARGET_FILE_DIR:pir>"
+        )
       endif()
       if(NOT ((NOT WITH_PYTHON) AND ON_INFER))
         target_link_libraries(${test_name} ${PYTHON_LIBRARIES})
       endif()
+      if(WITH_CINN AND NOT CINN_ONLY)
+        target_link_libraries(${test_name} $<TARGET_LINKER_FILE:cinnapi>)
+      endif()
       if(WITH_XPU)
         target_link_libraries(${test_name} xpulib)
       endif()
-      if(NOT
-         ("${test_name}" STREQUAL "c_broadcast_op_npu_test"
-          OR "${test_name}" STREQUAL "c_allreduce_sum_op_npu_test"
-          OR "${test_name}" STREQUAL "c_allreduce_max_op_npu_test"
-          OR "${test_name}" STREQUAL "c_reducescatter_op_npu_test"
-          OR "${test_name}" STREQUAL "c_allgather_op_npu_test"
-          OR "${test_name}" STREQUAL "send_v2_op_npu_test"
-          OR "${test_name}" STREQUAL "c_reduce_sum_op_npu_test"
-          OR "${test_name}" STREQUAL "recv_v2_op_npu_test"))
-        cc_test_run(
-          ${test_name}
-          COMMAND
-          ${test_name}
-          ARGS
-          ${test_arg}
-          DIR
-          ${CC_TESTS_DIR})
-      endif()
+      cc_test_run(
+        ${test_name}
+        COMMAND
+        ${test_name}
+        ARGS
+        ${test_arg}
+        DIR
+        ${CC_TESTS_DIR})
     elseif(WITH_TESTING AND NOT TEST ${test_name})
       add_test(NAME ${test_name} COMMAND ${CMAKE_COMMAND} -E echo CI skip
                                          ${test_name}.)

@@ -6,7 +6,6 @@ set(INTERPRETER_DEPS
     device_context
     global_utils
     op_registry
-    phi_tensor_utils
     scope
     framework_proto
     data_feed_proto
@@ -31,11 +30,20 @@ set(INTERPRETER_DEPS
     enforce
     scope
     glog
-    comm_context_manager
+    phi
     ${DEVICE_EVENT_LIBS}
     glog)
+
+if(WITH_CINN AND NOT CINN_ONLY)
+  set(INTERPRETER_DEPS ${INTERPRETER_DEPS} cinn_jit_instruction)
+endif()
 
 cc_library(
   interpreter
   SRCS ${INTERPRETER_SRCS}
-  DEPS ${INTERPRETER_DEPS})
+  DEPS standalone_executor ${INTERPRETER_DEPS})
+
+cc_library(
+  plan
+  SRCS plan.cc
+  DEPS proto_desc framework_proto)

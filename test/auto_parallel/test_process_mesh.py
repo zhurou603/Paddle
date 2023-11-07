@@ -19,13 +19,13 @@ import numpy as np
 import paddle
 import paddle.nn.functional as F
 from paddle import nn, static
-from paddle.distributed.auto_parallel.dist_context import (
-    get_default_distributed_context,
-)
 from paddle.distributed.auto_parallel.process_mesh import (
     ProcessMesh,
     compute_compatible_process_mesh,
     merge_process_meshes,
+)
+from paddle.distributed.auto_parallel.static.dist_context import (
+    get_default_distributed_context,
 )
 
 paddle.enable_static()
@@ -135,7 +135,7 @@ class TestProcessMesh(unittest.TestCase):
         with ProcessMesh(mesh, ["d"]):
             out = mlp(input)
 
-        default_program = paddle.fluid.default_main_program()
+        default_program = paddle.base.default_main_program()
         default_dist_context = get_default_distributed_context()
 
         for block in default_program.blocks:
@@ -196,11 +196,11 @@ class TestProcessMesh(unittest.TestCase):
         self.assertEqual(merged_process_mesh, ProcessMesh([0, 1, 2, 3, 4, 5]))
 
         merged_process_mesh = merge_process_meshes(
-            [process_mesh1, paddle.fluid.core.ProcessMesh()]
+            [process_mesh1, paddle.base.core.ProcessMesh()]
         )
         self.assertEqual(merged_process_mesh, ProcessMesh([0, 1, 2, 3, 4, 5]))
         merged_process_mesh = merge_process_meshes(
-            [paddle.fluid.core.ProcessMesh(), process_mesh1]
+            [paddle.base.core.ProcessMesh(), process_mesh1]
         )
         self.assertEqual(merged_process_mesh, ProcessMesh([0, 1, 2, 3, 4, 5]))
 

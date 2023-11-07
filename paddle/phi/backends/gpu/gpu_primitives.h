@@ -45,6 +45,91 @@ constexpr int PADDLE_CUDA_NUM_THREADS = 512;
 USE_CUDA_ATOMIC(Add, float);
 USE_CUDA_ATOMIC(Add, int);
 USE_CUDA_ATOMIC(Add, unsigned int);
+
+CUDA_ATOMIC_WRAPPER(Add, bool) {
+  size_t offset = reinterpret_cast<size_t>(address) & 3;
+  uint32_t *address_as_ui =
+      reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(address) - offset);
+  uint32_t old = *address_as_ui;
+  uint32_t shift = offset * 8;
+  uint32_t old_byte;
+  uint32_t newval;
+  uint32_t assumed;
+
+  do {
+    assumed = old;
+    old_byte = (old >> shift) & 0xff;
+    newval = static_cast<uint8_t>(val + static_cast<bool>(old_byte));
+    newval = (old & ~(0x000000ff << shift)) | (newval << shift);
+    old = atomicCAS(address_as_ui, assumed, newval);
+  } while (assumed != old);
+
+  return static_cast<bool>(old & 0xff);
+}
+
+CUDA_ATOMIC_WRAPPER(Add, uint8_t) {
+  size_t offset = reinterpret_cast<size_t>(address) & 3;
+  uint32_t *address_as_ui =
+      reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(address) - offset);
+  uint32_t old = *address_as_ui;
+  uint32_t shift = offset * 8;
+  uint32_t old_byte;
+  uint32_t newval;
+  uint32_t assumed;
+
+  do {
+    assumed = old;
+    old_byte = (old >> shift) & 0xff;
+    newval = static_cast<uint8_t>(val + static_cast<uint8_t>(old_byte));
+    newval = (old & ~(0x000000ff << shift)) | (newval << shift);
+    old = atomicCAS(address_as_ui, assumed, newval);
+  } while (assumed != old);
+
+  return static_cast<uint8_t>(old & 0xff);
+}
+
+CUDA_ATOMIC_WRAPPER(Add, int8_t) {
+  size_t offset = reinterpret_cast<size_t>(address) & 3;
+  uint32_t *address_as_ui =
+      reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(address) - offset);
+  uint32_t old = *address_as_ui;
+  uint32_t shift = offset * 8;
+  uint32_t old_byte;
+  uint32_t newval;
+  uint32_t assumed;
+
+  do {
+    assumed = old;
+    old_byte = (old >> shift) & 0xff;
+    newval = static_cast<int8_t>(val + static_cast<int8_t>(old_byte));
+    newval = (old & ~(0x000000ff << shift)) | (newval << shift);
+    old = atomicCAS(address_as_ui, assumed, newval);
+  } while (assumed != old);
+
+  return static_cast<int8_t>(old & 0xff);
+}
+
+CUDA_ATOMIC_WRAPPER(Add, int16_t) {
+  size_t offset = reinterpret_cast<size_t>(address) & 2;
+  uint32_t *address_as_ui =
+      reinterpret_cast<uint32_t *>(reinterpret_cast<char *>(address) - offset);
+  bool is_32_align = offset;
+  uint32_t old = *address_as_ui;
+  uint32_t old_bytes;
+  uint32_t newval;
+  uint32_t assumed;
+
+  do {
+    assumed = old;
+    old_bytes = is_32_align ? old >> 16 : old & 0xffff;
+    newval = static_cast<uint16_t>(val + static_cast<int16_t>(old_bytes));
+    newval = is_32_align ? (old & 0xffff) | (newval << 16)
+                         : (old & 0xffff0000) | newval;
+    old = atomicCAS(address_as_ui, assumed, newval);
+  } while (assumed != old);
+
+  return static_cast<int16_t>(old & 0xffff);
+}
 // CUDA API uses unsigned long long int, we cannot use uint64_t here.
 // It because unsigned long long int is not necessarily uint64_t
 USE_CUDA_ATOMIC(Add, unsigned long long int);  // NOLINT
@@ -445,6 +530,57 @@ CUDA_ATOMIC_WRAPPER(Max, phi::dtype::float16) {
 }
 #endif
 
+inline static __device__ uint32_t bf16_max_to_low_half(uint32_t val, float x) {
+  phi::dtype::bfloat16 low_half;
+  // The bfloat16 in lower 16bits
+  low_half.x = static_cast<uint16_t>(val & 0xFFFFu);
+  low_half =
+      static_cast<phi::dtype::bfloat16>(max(static_cast<float>(low_half), x));
+  return (val & 0xFFFF0000u) | low_half.x;
+}
+
+inline static __device__ uint32_t bf16_max_to_high_half(uint32_t val, float x) {
+  phi::dtype::bfloat16 high_half;
+  // The bfloat16 in higher 16bits
+  high_half.x = static_cast<uint16_t>(val >> 16);
+  high_half =
+      static_cast<phi::dtype::bfloat16>(max(static_cast<float>(high_half), x));
+  return (val & 0xFFFFu) | (static_cast<uint32_t>(high_half.x) << 16);
+}
+
+CUDA_ATOMIC_WRAPPER(Max, phi::dtype::bfloat16) {
+  if (*address >= val) {
+    return *address;
+  }
+  uint32_t *address_as_ui = reinterpret_cast<uint32_t *>(
+      reinterpret_cast<char *>(address) -
+      (reinterpret_cast<uintptr_t>(address) & 0x02));
+  float val_f = static_cast<float>(val);
+  uint32_t old = *address_as_ui;
+  uint32_t assumed;
+  if (((uintptr_t)address & 0x02) == 0) {
+    // The bfloat16 value stay at lower 16 bits of the address.
+    do {
+      assumed = old;
+      old = atomicCAS(
+          address_as_ui, assumed, bf16_max_to_low_half(assumed, val_f));
+    } while (old != assumed);
+    phi::dtype::bfloat16 ret;
+    ret.x = old & 0xFFFFu;
+    return ret;
+  } else {
+    // The bfloat16 value stay at higher 16 bits of the address.
+    do {
+      assumed = old;
+      old = atomicCAS(
+          address_as_ui, assumed, bf16_max_to_high_half(assumed, val_f));
+    } while (old != assumed);
+    phi::dtype::bfloat16 ret;
+    ret.x = old >> 16;
+    return ret;
+  }
+}
+
 // For atomicMin
 USE_CUDA_ATOMIC(Min, int);
 USE_CUDA_ATOMIC(Min, unsigned int);
@@ -580,6 +716,57 @@ CUDA_ATOMIC_WRAPPER(Min, phi::dtype::float16) {
 }
 #endif
 
+inline static __device__ uint32_t bf16_min_to_low_half(uint32_t val, float x) {
+  phi::dtype::bfloat16 low_half;
+  // The bfloat16 in lower 16bits
+  low_half.x = static_cast<uint16_t>(val & 0xFFFFu);
+  low_half =
+      static_cast<phi::dtype::bfloat16>(min(static_cast<float>(low_half), x));
+  return (val & 0xFFFF0000u) | low_half.x;
+}
+
+inline static __device__ uint32_t bf16_min_to_high_half(uint32_t val, float x) {
+  phi::dtype::bfloat16 high_half;
+  // The bfloat16 in higher 16bits
+  high_half.x = static_cast<uint16_t>(val >> 16);
+  high_half =
+      static_cast<phi::dtype::bfloat16>(min(static_cast<float>(high_half), x));
+  return (val & 0xFFFFu) | (static_cast<uint32_t>(high_half.x) << 16);
+}
+
+CUDA_ATOMIC_WRAPPER(Min, phi::dtype::bfloat16) {
+  if (*address <= val) {
+    return *address;
+  }
+  uint32_t *address_as_ui = reinterpret_cast<uint32_t *>(
+      reinterpret_cast<char *>(address) -
+      (reinterpret_cast<uintptr_t>(address) & 0x02));
+  float val_f = static_cast<float>(val);
+  uint32_t old = *address_as_ui;
+  uint32_t assumed;
+  if (((uintptr_t)address & 0x02) == 0) {
+    // The bfloat16 value stay at lower 16 bits of the address.
+    do {
+      assumed = old;
+      old = atomicCAS(
+          address_as_ui, assumed, bf16_min_to_low_half(assumed, val_f));
+    } while (old != assumed);
+    phi::dtype::bfloat16 ret;
+    ret.x = old & 0xFFFFu;
+    return ret;
+  } else {
+    // The bfloat16 value stay at higher 16 bits of the address.
+    do {
+      assumed = old;
+      old = atomicCAS(
+          address_as_ui, assumed, bf16_min_to_high_half(assumed, val_f));
+    } while (old != assumed);
+    phi::dtype::bfloat16 ret;
+    ret.x = old >> 16;
+    return ret;
+  }
+}
+
 #ifdef PADDLE_WITH_CUDA
 /*
  * One thead block deals with elementwise atomicAdd for vector of len.
@@ -609,7 +796,7 @@ __device__ __forceinline__ void VectorizedAtomicAddPerBlock(
   using NVT = typename VecAtomicAddHelper<T>::NVT;
   using NVVec2T = typename VecAtomicAddHelper<T>::NVVec2T;
   bool aligned_half2 =
-      (reinterpret_cast<std::uintptr_t>(out) % sizeof(NVT) == 0);
+      (reinterpret_cast<std::uintptr_t>(out) % sizeof(NVVec2T) == 0);
 
   if (aligned_half2) {
     for (i = tid * 2; i < loops; i += threads_per_block * 2) {
